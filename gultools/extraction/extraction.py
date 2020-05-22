@@ -10,6 +10,7 @@ def endmember_extraction(image,
                          distance_measure=auc_sam,
                          distance_threshold_filter=0.0001,
                          distance_threshold_redundancy=0.0005,
+                         filter_type='Neumann',
                          normalize_distance=True):
 
     image_orig = copy.deepcopy(image)
@@ -40,7 +41,15 @@ def endmember_extraction(image,
 
         for h in shifts:
 
-            if v != 0 or h != 0:
+            con1 = v != 0 or h != 0
+
+            # apply the chosen neighbourhood filter
+            if filter_type == 'Moore':
+                con2 = True
+            elif filter_type == 'Neumann':
+                con2 = np.abs(v) == 0 or np.abs(h) == 0
+
+            if con1 and con2:
 
                 image_shift = np.roll(image_pad, (v, h), axis=(0, 1))
                 image_shift = image_shift[1:-1, 1:-1]
@@ -113,5 +122,5 @@ def find_new_spectra(refl, refl_ref,
     output = new_spectra
     if return_indices:
         output = (new_spectra, ind)
-    
+
     return output
