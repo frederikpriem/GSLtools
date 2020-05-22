@@ -10,7 +10,7 @@ def endmember_extraction(image,
                          distance_measure=auc_sam,
                          distance_threshold_filter=0.0001,
                          distance_threshold_redundancy=0.0005,
-                         filter_type='Neumann',
+                         filter_type='Moore',
                          normalize_distance=True):
 
     image_orig = copy.deepcopy(image)
