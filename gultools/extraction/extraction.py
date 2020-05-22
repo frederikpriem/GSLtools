@@ -95,19 +95,23 @@ def endmember_extraction(image,
 def find_new_spectra(refl, refl_ref,
                      distance_measure=auc_sam,
                      distance_threshold=0.0001,
-                     normalize_distance=True
+                     normalize_distance=True,
+                     return_indices=True
                      ):
 
-    new_spectra = []
+    ind = []
 
     for s, spec in enumerate(refl):
 
         dist = distance_measure(spec, refl_ref,
                                 norm=normalize_distance)
         if np.all(dist > distance_threshold):
-            new_spectra.append(s)
+            ind.append(s)
 
-    new_spectra = np.array(new_spectra)
-
-    return new_spectra
+    ind = np.array(ind)
+    new_spectra = refl[ind, :]
+    output = new_spectra
+    if return_indices:
+        output = (new_spectra, ind)
     
+    return output
