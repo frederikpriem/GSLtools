@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 import copy
+import sys
 from gultools.spectral_distance import *
 from scipy.spatial.distance import pdist, squareform
 
@@ -31,6 +32,7 @@ def comprehensive(spectra,
         spectra = np.delete(spectra, del_ind, 0)
         loc = np.delete(loc, del_ind)
         dist_center = np.delete(dist_center, del_ind)
+        del dist, del_ind
 
         # stop when all library spectra are either retained or removed
         if spectra.shape[0] == 0:
