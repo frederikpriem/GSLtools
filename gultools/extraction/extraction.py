@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 
 
 def endmember_extraction(image,
-                         brightness_normalize=False,
+                         normalize_image=False,
                          return_candidate_indices=False,
-                         distance_measure=l1_sam,
-                         distance_threshold_filter=0.01,
-                         distance_threshold_redundancy=0.05):
+                         distance_measure=auc_sam,
+                         distance_threshold_filter=0.0001,
+                         distance_threshold_redundancy=0.0005,
+                         normalize_distance=True):
 
     image_orig = copy.deepcopy(image)
     image = copy.deepcopy(image)
@@ -17,8 +18,8 @@ def endmember_extraction(image,
     image_array = image.reshape(rows * cols, bands)
     loc = np.arange(image_array.shape[0])  # this vector is used to trace the location in the original image
 
-    # brightness normalize image
-    if brightness_normalize:
+    # normalize image
+    if normalize_image:
         image = image / np.expand_dims(image.mean(axis=2), axis=2)
         image_array = image_array / np.expand_dims(image_array.mean(axis=1), axis=1)
 
@@ -44,7 +45,8 @@ def endmember_extraction(image,
                 image_shift = np.roll(image_pad, (v, h), axis=(0, 1))
                 image_shift = image_shift[1:-1, 1:-1]
                 image_shift_array = image_shift.reshape(rows * cols, bands)
-                dist = distance_measure(image_array, image_shift_array).reshape(-1, 1)
+                dist = distance_measure(image_array, image_shift_array,
+                                        norm=normalize_distance).reshape(-1, 1)
                 check.append(dist < distance_threshold_filter)
 
     # if all neighbouring spectra are similar, retain the central pixel as a candidate
@@ -68,7 +70,8 @@ def endmember_extraction(image,
         em_loc.append(loc[ind_em])
 
         # remove the endmember and similar spectra from the array to avoid redundancy
-        dist = distance_measure(em, image_array)
+        dist = distance_measure(em, image_array,
+                                norm=normalize_distance)
         del_ind = np.where(dist < distance_threshold_redundancy)[0]
         image_array = np.delete(image_array, del_ind, 0)
         loc = np.delete(loc, del_ind)
@@ -87,3 +90,24 @@ def endmember_extraction(image,
         output = (em, em_rows, em_cols, cand_rows, cand_cols)
 
     return output
+
+
+def find_new_spectra(refl, refl_ref,
+                     distance_measure=auc_sam,
+                     distance_threshold=0.0001,
+                     normalize_distance=True
+                     ):
+
+    new_spectra = []
+
+    for s, spec in enumerate(refl):
+
+        dist = distance_measure(spec, refl_ref,
+                                norm=normalize_distance)
+        if np.all(dist > distance_threshold):
+            new_spectra.append(s)
+
+    new_spectra = np.array(new_spectra)
+
+    return new_spectra
+    
