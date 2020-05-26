@@ -216,14 +216,9 @@ def auc_sam(array1, array2, norm=True):
 
     array1, array2 = check_dims_values(array1, array2)
 
-    if not norm:
-        dist1 = auc(array1, array2, norm=False)
-        dist2 = sam(array1, array2, norm=False)
-        dist = dist1 * np.sin(dist2)
-    else:
-        dist1 = auc(array1, array2, norm=False)
-        dist2 = sam(array1, array2, norm=True)
-        dist = dist1 * np.sin(dist2) / array1.shape[1]
+    dist1 = auc(array1, array2, norm=True)
+    dist2 = sam(array1, array2, norm=False)
+    dist = dist1 + np.sin(dist2)
 
     return dist.squeeze()
 

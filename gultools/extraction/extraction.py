@@ -11,7 +11,8 @@ def endmember_extraction(image,
                          distance_threshold_filter=0.0001,
                          distance_threshold_redundancy=0.0005,
                          filter_type='Moore',
-                         normalize_distance=True):
+                         normalize_distance=True,
+                         nodata=None):
 
     image_orig = copy.deepcopy(image)
     image = copy.deepcopy(image)
@@ -59,8 +60,12 @@ def endmember_extraction(image,
                 check.append(dist < distance_threshold_filter)
 
     # if all neighbouring spectra are similar, retain the central pixel as a candidate
+    # remove no data pixels from candidates if applicable
     check = np.hstack(check)
-    cand_ind = np.where(np.all(check, axis=1))[0]
+    check = np.all(check, axis=1)
+    if nodata is not None:
+        check *= np.all(image_array != nodata, axis=1)
+    cand_ind = np.where(check)[0]
     image_array = image_array[cand_ind, :]
     loc = loc[cand_ind]
     

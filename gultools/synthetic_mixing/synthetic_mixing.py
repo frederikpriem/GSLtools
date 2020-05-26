@@ -1,25 +1,29 @@
 import numpy as np
 
 
-def synthetic_mixing(lib, names, size,
+def synthetic_mixing(spectra, names, size,
                      complexity=(0.5, 0.5),
-                     include_em=False,
+                     include_original=False,
                      sampling='stratified',
-                     background=None):
+                     background=None,
+                     only_within_class_mixing=False,
+                     only_between_class_mixing=False,
+                     return_dominant_class=False,
+                     ):
     
     """
     :param libpath: str
     :param size: int, sample size
     :param complexity: list or tuple of floats, first element corresponds to fraction binary, second to fraction ternary
      etc.
-    :param include_em: bool
+    :param include_original: bool
     :param sampling: str or dict, 'random', or 'stratified' or dict {class name:weight}
     :param background: str or list of str, classes not included in fraction labels
     :return: 
     """
 
-    numspec = lib.shape[0]
-    numbands = lib.shape[1]
+    numspec = spectra.shape[0]
+    numbands = spectra.shape[1]
 
     # get spectra names
     classnames, counts = np.unique(names, return_counts=True)
@@ -73,12 +77,50 @@ def synthetic_mixing(lib, names, size,
 
         # randomly assign library spectra to each fraction
         # use weights to perform stratified sampling
-        specind = np.random.choice(range(numspec),
-                                   size=num,
-                                   replace=False,
-                                   p=weights)
+        if only_within_class_mixing:
 
-        # sum fractions of same class and produce final fractions
+            specind1 = np.random.choice(range(numspec),
+                                        size=1,
+                                        p=weights)
+
+            p = np.where(names == names[specind1], 1.0, 0.0)
+            if p.sum() > 1:
+                p[specind1] = 0
+            p *= weights
+            p /= p.sum()
+
+            specind2 = np.random.choice(range(numspec),
+                                        size=num - 1,
+                                        replace=True,
+                                        p=p)
+
+            specind = np.concatenate((specind1, specind2))
+
+        elif only_between_class_mixing:
+
+            specind1 = np.random.choice(range(numspec),
+                                        size=1,
+                                        p=weights)
+
+            p = np.where(names != names[specind1], 1.0, 0.0)
+            p *= weights
+            p /= p.sum()
+
+            specind2 = np.random.choice(range(numspec),
+                                        size=num - 1,
+                                        replace=False,
+                                        p=p)
+
+            specind = np.concatenate((specind1, specind2))
+            
+        else:
+
+            specind = np.random.choice(range(numspec),
+                                       size=num,
+                                       replace=False,
+                                       p=weights)
+
+        # sum fractions of same class to produce final fractions
         for i, ind in enumerate(specind):
             
             classind = np.where(classnames == names[ind])[0]
@@ -89,14 +131,14 @@ def synthetic_mixing(lib, names, size,
         
         for n in range(num):
             
-            mixtemp += randfrac[n] * lib[specind[n], :]
+            mixtemp += randfrac[n] * spectra[specind[n], :]
             
         mix[s, :] = mixtemp
 
     # include pure endmembers in synthetic mixtures
-    if include_em:
+    if include_original:
 
-        mix = np.concatenate((mix, lib), axis=0)
+        mix = np.concatenate((mix, spectra), axis=0)
 
         for name in names:
 
@@ -116,4 +158,31 @@ def synthetic_mixing(lib, names, size,
             frac = np.delete(frac, classind, axis=1)
             classnames = np.delete(classnames, classind)
 
-    return frac, mix
+    output = (mix, frac)
+    if return_dominant_class:
+        classind = np.argmax(frac, axis=1)
+        dominant_class = classnames[classind]
+        output = (mix, frac, dominant_class)
+
+    return output
+
+
+def perturbate_spectra(spectra, intensity,
+                       mode='relative'):
+
+    perturbated = np.zeros(spectra.shape)
+
+    for s, spec in enumerate(spectra):
+
+        if mode == 'absolute':
+            perturbated[s, :] = spec + np.random.normal(0, intensity, spec.size)
+        else:
+
+            for r, refl in enumerate(spec):
+
+                perturbated[s, r] = refl + np.random.normal(0, r * intensity)
+
+    perturbated[perturbated < 0] = 0
+    perturbated[perturbated > 1] = 1
+
+    return perturbated

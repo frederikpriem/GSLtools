@@ -64,16 +64,18 @@ def transform_coordinates(x_src, y_src, srs_src, srs_dst):
     return x_dst, y_dst
 
 
-def tile_image(image_path, tile_size, outfolder, basename):
+def tile_image(image_path, tile_size, outfolder, basename,
+               remove_empty_tiles=True,
+               nodata=None):
 
     image, metadata = read_envi_image(image_path, load=False)
     rows = metadata['lines']
     cols = metadata['samples']
     map_info = metadata['map info']
-    ulx = map_info[3]
-    uly = map_info[4]
-    resx = map_info[5]
-    resy = map_info[6]
+    ulx = float(map_info[3])
+    uly = float(map_info[4])
+    resx = float(map_info[5])
+    resy = float(map_info[6])
     trows = int(np.ceil(rows / tile_size))
     tcols = int(np.ceil(cols / tile_size))
     ntiles = trows * tcols
@@ -85,19 +87,25 @@ def tile_image(image_path, tile_size, outfolder, basename):
 
         for c in range(tcols):
 
-            image_tile = image[r:(r + 1) * tile_size, c:(c + 1) * tile_size, :]
+            image_tile = image[r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size, :]
 
-            metadata_tile = copy.deepcopy(metadata)
-            metadata_tile['lines'] = image_tile.shape[0]
-            metadata_tile['samples'] = image_tile.shape[1]
-            ulx_tile = ulx + r * tile_size * resx
-            uly_tile = uly - c * tile_size * resy
-            metadata_tile['map info'][3] = ulx_tile
-            metadata_tile['map info'][4] = uly_tile
+            if remove_empty_tiles and np.all(image_tile == nodata, axis=None):
 
-            cnt += 1
-            ndigits_cnt = len(str(cnt))
-            name = basename + '_' + (ndigits - ndigits_cnt) * '0' + str(cnt)
-            outpath = outfolder + r'\{}.bsq'.format(name)
+                pass
 
-            save_envi_image(outpath, image_tile, metadata_tile)
+            else:
+
+                metadata_tile = copy.deepcopy(metadata)
+                metadata_tile['lines'] = image_tile.shape[0]
+                metadata_tile['samples'] = image_tile.shape[1]
+                ulx_tile = ulx + c * tile_size * resx
+                uly_tile = uly - r * tile_size * resy
+                metadata_tile['map info'][3] = ulx_tile
+                metadata_tile['map info'][4] = uly_tile
+
+                cnt += 1
+                ndigits_cnt = len(str(cnt))
+                name = basename + '_' + (ndigits - ndigits_cnt) * '0' + str(cnt)
+                outpath = outfolder + r'\{}.bsq'.format(name)
+
+                save_envi_image(outpath, image_tile, metadata_tile)
