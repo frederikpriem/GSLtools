@@ -3,7 +3,9 @@ from tqdm import tqdm
 import copy
 import sys
 from gultools.spectral_distance import *
+from gultools.validation import kappa_coefficient
 from scipy.spatial.distance import pdist, squareform
+from itertools import combinations
 
 
 def comprehensive(spectra,
@@ -18,25 +20,34 @@ def comprehensive(spectra,
     ret_loc = []
     stop = False
 
-    while not stop:
-
-        # retain the spectrum located furthest away from the center
-        ind = np.argmax(dist_center)
-        ret = spectra[ind, :]
-        retained_spectra.append(ret.reshape(1, -1))
-        ret_loc.append(loc[ind])
-
-        # remove the retained spectrum and similar spectra from the library to avoid redundancy
-        dist = distance_measure(ret, spectra)
-        del_ind = np.where(dist < distance_threshold)[0]
-        spectra = np.delete(spectra, del_ind, 0)
-        loc = np.delete(loc, del_ind)
-        dist_center = np.delete(dist_center, del_ind)
-        del dist, del_ind
+    while True:
 
         # stop when all library spectra are either retained or removed
         if spectra.shape[0] == 0:
-            stop = True
+            break
+
+        # retain the spectrum located furthest away from the center
+        ind = np.argmax(dist_center)
+        ret = copy.deepcopy(spectra[ind, :])
+        retained_spectra.append(ret.reshape(1, -1))
+        ret_loc.append(loc[ind])
+
+        # remove the retained spectrum
+        spectra = np.delete(spectra, ind, axis=0)
+        loc = np.delete(loc, ind)
+        dist_center = np.delete(dist_center, ind)
+
+        # stop when all library spectra are either retained or removed
+        if spectra.shape[0] == 0:
+            break
+
+        # Remove similar spectra from the library to avoid redundancy
+        dist = distance_measure(ret, spectra)
+        del_ind = np.where(dist < distance_threshold)[0]
+        if del_ind.size > 0:
+            spectra = np.delete(spectra, del_ind, 0)
+            loc = np.delete(loc, del_ind)
+            dist_center = np.delete(dist_center, del_ind)
 
     spectra = np.concatenate(retained_spectra, axis=0)
 
@@ -49,16 +60,16 @@ def comprehensive(spectra,
 
 
 def pairwise(spectra,
-             distance_measure=l1_sam,
-             distance_threshold=0.05,
+             distance_measure=auc_sam,
+             distance_threshold=0.1,
              return_indices=False):
     
     # produce a square matrix containing distances between each spectrum pair
     dist = pdist(spectra, distance_measure)
     dist = squareform(dist)
 
-    # set the diagonal elements to some very high value
-    dist[np.arange(dist.shape[0]), np.arange(dist.shape[0])] = 10**10
+    # set the diagonal element to the highest finite positive value
+    dist[np.arange(dist.shape[0]), np.arange(dist.shape[0])] = np.finfo(float).max
 
     stop = False
     indices = np.arange(spectra.shape[0])
@@ -87,7 +98,6 @@ def pairwise(spectra,
                 dist = np.delete(dist, spec1, axis=0)
                 dist = np.delete(dist, spec1, axis=1)
 
-            # in the rare yet theoretically possible case of a tie, remove both spectra
             else:
 
                 del_ind = np.array([spec1, spec2])
@@ -104,6 +114,91 @@ def pairwise(spectra,
         return library_optimized
     else:
         return library_optimized, indices
+
+
+def ies(spectra, labels, classifier,
+        return_indices=False):
+
+    # find the pair of spectra that best models all spectra
+    kappas = []
+    combs = combinations(labels, 2)
+
+    for comb in combs:
+
+        spectra_temp = spectra[np.array(comb), :]
+        labels_temp = np.concatenate((labels[comb[0]], labels[comb[1]]))
+        model = classifier.fit(spectra_temp, labels_temp)
+        predict = model.predict(spectra)
+        kappas.append(kappa_coefficient(predict, labels))
+
+    kappas = np.array(kappas)
+    ind_max = np.argmax(kappas)
+    kappa_prev = copy.deepcopy(kappas[ind_max])
+    retained = np.array(combs[ind_max])
+    candidates = np.arange(labels.size)
+    candidates = np.delete(candidates, retained)
+
+    while True:
+
+        addition = False
+        removal = False
+
+        # check which new spectrum adds the highest improvement to the model, if any
+        kappas = []
+
+        for cand in candidates:
+
+            spectra_temp = spectra[retained, :]
+            spectra_temp = np.concatenate((spectra_temp, spectra[cand, :].reshape(1, -1)), axis=0)
+            labels_temp = labels[retained]
+            labels_temp = np.concatenate((labels_temp, labels[cand]))
+            model = classifier.fit(spectra_temp, labels_temp)
+            predict = model.predict(spectra)
+            kappas.append(kappa_coefficient(predict, labels))
+
+        kappas = np.array(kappas)
+        ind_max = np.argmax(kappas)
+        kappa_max = kappas[ind_max]
+
+        if kappa_max > kappa_prev:
+
+            retained = np.concatenate((retained, [candidates[ind_max]]))
+            candidates = np.delete(candidates, ind_max)
+            kappa_prev = copy.deepcopy(kappa_max)
+            addition = True
+
+        # check which retained spectrum yields the highest improvement to the model when removed, if any
+        kappas = []
+
+        for ret in retained:
+
+            retained_temp = np.delete(retained, ret)
+            spectra_temp = spectra[retained_temp, :]
+            labels_temp = labels[retained_temp]
+            model = classifier.fit(spectra_temp, labels_temp)
+            predict = model.predict(spectra)
+            kappas.append(kappa_coefficient(predict, labels))
+
+        kappas = np.array(kappas)
+        ind_max = np.argmax(kappas)
+        kappa_max = kappas[ind_max]
+
+        if kappa_max > kappa_prev:
+
+            candidates = np.concatenate((candidates, [retained[ind_max]]))
+            retained = np.delete(retained, ind_max)
+            kappa_prev = copy.deepcopy(kappa_max)
+            removal = True
+
+        # stop the iteration if no spectra were added to or removed from the set of retained spectra
+        if not (addition or removal):
+            break
+
+    output = spectra[retained, :]
+    if return_indices:
+        output = spectra[retained, :], retained
+
+    return output
 
 
 def image_comprehensive(spectra, image,

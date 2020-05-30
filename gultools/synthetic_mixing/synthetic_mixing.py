@@ -180,7 +180,7 @@ def perturbate_spectra(spectra, intensity,
 
             for r, refl in enumerate(spec):
 
-                perturbated[s, r] = refl + np.random.normal(0, r * intensity)
+                perturbated[s, r] = refl + np.random.normal(0, refl * intensity)
 
     perturbated[perturbated < 0] = 0
     perturbated[perturbated > 1] = 1

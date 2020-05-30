@@ -109,3 +109,57 @@ def tile_image(image_path, tile_size, outfolder, basename,
                 outpath = outfolder + r'\{}.bsq'.format(name)
 
                 save_envi_image(outpath, image_tile, metadata_tile)
+
+
+def merge_libraries(lib_paths, out_path,
+                    additional_merge_fields=None):
+
+    path = lib_paths[0].split('.')[0] + '.hdr'
+    metadata = read_envi_header(path)
+    wavelengths = metadata['wavelength']
+    wavelength_units = metadata['wavelength units']
+    fwhm = metadata['fwhm']
+    spectra_names_collection = []
+    spectra_collection = []
+
+    if additional_merge_fields is not None:
+        fields = list(additional_merge_fields)
+        fields_collection = [[]] * len(fields)
+    else:
+        fields = None
+        fields_collection = None
+
+    for lib_path in lib_paths:
+
+        spectra, metadata = read_envi_library(lib_path)
+
+        if not np.all(np.equal(wavelengths, metadata['wavelength'])):
+            raise ValueError('wavelengths must be equal')
+        if wavelength_units != metadata['wavelength units']:
+            raise ValueError('wavelength units must be equal')
+        if not np.all(np.equal(fwhm, metadata['fwhm'])):
+            raise ValueError('FWHM must be equal')
+
+        spectra_collection.append(spectra)
+        spectra_names_collection.append(metadata['spectra names'])
+
+        if fields:
+
+            for f, field in enumerate(fields):
+
+                fields_collection[f].append(metadata[field])
+
+    spectra = np.concatenate(spectra_collection, axis=0)
+    spectra_names = np.concatenate(spectra_names_collection)
+
+    metadata['description'] = 'merged library'
+    metadata['spectra names'] = spectra_names
+    metadata['lines'] = len(spectra_names)
+
+    if fields:
+
+        for f, field in enumerate(fields):
+
+            metadata[field] = np.concatenate(fields_collection[f])
+
+    save_envi_library(out_path, spectra, metadata)

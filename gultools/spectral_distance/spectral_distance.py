@@ -218,7 +218,7 @@ def auc_sam(array1, array2, norm=True):
 
     dist1 = auc(array1, array2, norm=True)
     dist2 = sam(array1, array2, norm=False)
-    dist = dist1 + np.sin(dist2)
+    dist = (1 + dist1) * (1 + np.sin(dist2)) - 1
 
     return dist.squeeze()
 
