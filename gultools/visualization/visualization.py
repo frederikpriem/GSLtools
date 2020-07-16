@@ -5,6 +5,11 @@ from itertools import combinations
 import copy
 
 
+"""
+This module contains tools that help to visualize imagery, spectral libraries and their overlap in feature space.
+"""
+
+
 def plot_image(image,
                vmin=0,
                vmax=1,
@@ -40,21 +45,32 @@ def plot_spectra(library, wavelengths,
                  title=None,
                  xlabel=None,
                  ylabel=None,
+                 ylim=None,
                  colors=None,
+                 linestyles=None,
+                 linewidth=None,
                  labels=None,
-                 white_spaces=None,
+                 unmeasured_intervals=None,
                  ax=None,
                  show=True,
-                 out=None):
+                 show_axes=True,
+                 out=None,
+                 bbox_to_anchor=None,
+                 transparent=False,
+                 figsize=None):
 
     n_spectra = library.shape[0]
     ymax = library.max(axis=None)
 
     if not ax:
+        f = plt.figure(figsize=figsize)
         ax = plt.gca()
 
     if not colors:
         colors = [None] * n_spectra
+
+    if not linestyles:
+        linestyles = ['-'] * n_spectra
 
     if labels is not None:
 
@@ -72,35 +88,72 @@ def plot_spectra(library, wavelengths,
     # plot the spectra with correct color and label
     for s, spectrum in enumerate(library):
 
+        label = None
+        if labels is not None:
+            label = labels[s]
+
         ax.plot(wavelengths, spectrum,
                 color=colors[s],
-                label=labels[s])
+                linestyle=linestyles[s],
+                linewidth=linewidth,
+                label=label,
+                zorder=0)
 
-    if white_spaces is not None:
+    if unmeasured_intervals is not None:
 
-        for ws in white_spaces:
+        if unmeasured_intervals == 'auto':
 
-            xmin = ws[0]
-            xmax = ws[1]
+            diff = np.diff(wavelengths)
+            iqr = np.quantile(diff, 0.75) - np.quantile(diff, 0.25)
+            outind = np.where(diff > diff.mean() + 1.5 * iqr)[0]
+            unmeasured_intervals = [[wavelengths[o], wavelengths[o + 1]] for o in outind]
+
+        for ui in unmeasured_intervals:
+
+            xmin = ui[0]
+            xmax = ui[1]
             x_ws = [xmin, xmax, xmax, xmin, xmin]
-            y_ws = [0, 0, ymax, ymax, 0]
-            ax.fill(x_ws, y_ws, 'white')
+            y_ws = [0, 0, 1, 1, 0]
+            ax.fill(x_ws, y_ws, 'white', zorder=1)
+
+    if show_axes:
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('0.5')
+        ax.spines['bottom'].set_color('0.5')
+        ax.tick_params(axis='x',
+                       colors='0.5')
+        ax.tick_params(axis='y',
+                       colors='0.5')
+
+    else:
+
+        ax.axis('off')
 
     if labels is not None:
-        ax.legend()
+        ax.legend(loc='right',
+                  bbox_to_anchor=bbox_to_anchor,
+                  bbox_transform=ax.transAxes,
+                  fontsize=11)
 
     if title:
         ax.set_title(title)
 
     if xlabel:
-        ax.set_xlabel(xlabel)
+        ax.set_xlabel(xlabel, fontsize=11, color='0.2')
 
     if ylabel:
-        ax.set_ylabel(ylabel)
+        ax.set_ylabel(ylabel, fontsize=11, color='0.2')
+
+    if ylim:
+        ax.set_ylim(ylim)
 
     if out:
-        plt.tight_layout()
-        plt.savefig(out, dpi=1000)
+        plt.savefig(out,
+                    dpi=1000,
+                    transparent=transparent,
+                    bbox_inches='tight')
     elif show:
         plt.tight_layout()
         plt.show()

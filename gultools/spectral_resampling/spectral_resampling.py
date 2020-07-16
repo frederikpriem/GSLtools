@@ -38,7 +38,11 @@ def spectral_resampling(new_wavs, new_fwhm, old_wavs, old_fwhm, old_refl):
         conright2 = (new_wavs[newband] + new_fwhm[newband] / 2) <= (old_wavs + old_fwhm / 2)
         conright = np.any(np.logical_and(conright1, conright2))
 
-        if not (conleft or conright):
+        confull1 = (new_wavs[newband] - new_fwhm[newband] / 2) <= (old_wavs - old_fwhm / 2)
+        confull2 = (new_wavs[newband] + new_fwhm[newband] / 2) >= (old_wavs + old_fwhm / 2)
+        confull = np.any(np.logical_and(confull1, confull2))
+
+        if not (conleft or conright or confull):
             raise ValueError("The new bands specified must overlap at least"
                              "partially with the old band definitions.")
 
@@ -93,6 +97,23 @@ def bandclust(spectra, wavelengths, bandwidths,
               nbins='FD',
               sigma=1):
 
+    """
+    Clusters adjacent bands based on Mutual Information (MI). See corresponding paper for more information.
+    :param spectra: 2D-array of floats with shape (n spectra, b bands)
+    :param wavelengths: 1D-array of float of shape (b bands), containing the central wavelength of each band
+    :param bandwidths: 1D-array of float of shape (b bands), containing bandwidths for each band
+    :param subbands_start: Iterable containing int values, initial subband definition. Values must range between 0 and
+    b - 1. This can be used to avoid clustering of bands over a spectral interval that is not covered by the sensor.
+    :param nbins: int or str, if int number of bins used to estimate mutual information, if str then nbins must be equal
+    to 'FD', see 'mutual_information'.
+    :param sigma: float, parameter used to smooth the MI curve prior to subband splitting.
+    :return:
+        new_wavelengths: 1D-array of floats with shape (b bands,), central wavelengths of new clustered band
+        definition
+        new_bandwidths: 1D-array of floats with shape (b bands,), bandwidths of new clustered band definition
+
+    """
+
     def mutual_information(x, y):
 
         # determine the optimal number of bins for MI estimation using the Freedman-Diaconis rule
@@ -115,12 +136,6 @@ def bandclust(spectra, wavelengths, bandwidths,
         jh = jh + np.finfo(jh.dtype).eps
         sh = np.sum(jh)
         jh = jh / sh
-
-        # smooth joint histogram with a gaussian filter
-        # gaussian_filter(jh,
-        #                 sigma=sigma,
-        #                 mode='constant',
-        #                 output=jh)
 
         # get marginal histograms
         mh1 = np.sum(jh, axis=0).reshape((-1, jh.shape[1]))

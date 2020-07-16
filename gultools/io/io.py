@@ -1,11 +1,10 @@
 import re
 import spectral.io.envi as envi
 import numpy as np
-import geopandas
 import ogr
 import osr
 
-
+# lookup table for ENVI-Python data types
 dtype_map = [(1, np.uint8),                   # unsigned byte
              (2, np.int16),                   # 16-bit int
              (3, np.int32),                   # 32-bit int
@@ -23,6 +22,13 @@ dtype_to_envi = dict((v, k) for (k, v) in dtype_map)
 
 def read_envi_header(hdr,
                      format_iter=None):
+
+    """
+    reads ENVI header to dictionary
+    :param hdr: str, path to header
+    :param format_iter: dictionary, used to cast specified metadata entries (key) to correct data types (value)
+    :return: metadata dictionary
+    """
 
     f = open(hdr)
     hdr = f.read()
@@ -107,7 +113,16 @@ def read_envi_header(hdr,
     return md
 
 
-def read_envi_library(path):
+def read_envi_library(path, format_iter=None):
+
+    """
+    reads ENVI spectral library to array + metadata dictionary
+    :param path: str, path to library
+    :param format_iter: dictionary, used to cast specified metadata entries (key) to correct data types (value)
+    :return:
+        spectra: 2D-array of float with shape (n spectra, b bands)
+        metadata: metadata dictionary
+    """
 
     # add .hdr to path, remove other file extensions if needed
     if '.' in path:
@@ -120,12 +135,20 @@ def read_envi_library(path):
     spectra = np.array(library.spectra)
 
     # read the header metadata
-    metadata = read_envi_header(path)
+    metadata = read_envi_header(path, format_iter=format_iter)
 
     return spectra, metadata
 
 
 def save_envi_library(path, spectra, metadata):
+
+    """
+    saves spectra + metadata dictionary to binary file with BSQ interleave (GDAL works better with BSQ!) + ENVI header
+    :param path: str, output path
+    :param spectra: 2D-array of float with shape (n spectra, b bands)
+    :param metadata: dictionary, metadata dictionary containing at least all ENVI-required metadata entries
+    :return: None
+    """
 
     # here the path must free of file extensions
     if '.' in path:
@@ -136,6 +159,17 @@ def save_envi_library(path, spectra, metadata):
 
 
 def save_library_shapefile(path, ids, labels, x, y, srs):
+
+    """
+    saves points corresponding to spectral library entries to shapefile
+    :param path: str, output path
+    :param ids: 1D-array, ID's for each entry, used to match shapefile features to library entries
+    :param labels: 1D-array of string, labels given to each entry
+    :param x: 1D-array of floats, x coordinates
+    :param y: 1D-array of floats, y coordinates
+    :param srs: Spatial Reference System, either EPSG code (int) or WKT format (str)
+    :return: None
+    """
 
     # convert the srs string (wkt format) or integer (EPSG code) to a spatial reference object
     osr_srs = osr.SpatialReference()
@@ -183,6 +217,16 @@ def save_library_shapefile(path, ids, labels, x, y, srs):
 
 def read_envi_image(path, load=True):
 
+    """
+    reads ENVI image to array + metadata dictionary
+    :param path: str, path to image
+    :param load: Bool, whether to load the image to memory. If True (default), returns 3D-array of floats with shape
+    (rows, cols, bands). If False, returns spectral python image object (can be loaded in part or completely).
+    :return:
+        image: see load
+        metadata: metadata dictionary
+    """
+
     # add .hdr to path, remove other file extensions if needed
     if '.' in path:
         path = path.split('.')[0] + '.hdr'
@@ -201,6 +245,14 @@ def read_envi_image(path, load=True):
 
 
 def save_envi_image(path, image, metadata):
+
+    """
+    saves image + metadata dictionary to binary file with BSQ interleave (GDAL works better with BSQ!) + ENVI header
+    :param path: str, output path
+    :param image: 3D-array of float with shape (rows, cols, bands)
+    :param metadata: dictionary, metadata dictionary containing at least all ENVI-required metadata entries
+    :return: None
+    """
 
     # add .hdr to path, remove other file extensions if needed
     if '.' in path:

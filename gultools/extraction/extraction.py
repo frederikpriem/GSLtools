@@ -14,6 +14,27 @@ def endmember_extraction(image,
                          normalize_distance=True,
                          nodata=None):
 
+    """
+    extracts EM spectra from image in two steps:
+    1. Find pure patches in the image using neighbourhood analysis. The central pixel is compared with all its
+     neighbouring pixels. If all pixels are similar, the central pixel in these neighbourhood becomes a candidate EM.
+    2. Iteratively retain candidate EM's located farthest away from the center of mass of all candidates. Remove spectra
+     located near retained EM at the end of each iteration. Repeat until all candidates are either retained or removed.
+    :param image: 3D-array of shape (rows, cols, bands)
+    :param normalize_image: bool, whether to brightness normalize each pixel in the image
+    :param return_candidate_indices: bool, whether to return indices of all candidate EM
+    :param distance_measure: object, distance measure used
+    :param distance_threshold_filter: float, distance threshold used to find pure patches
+    :param distance_threshold_redundancy: float, distance threshold used to assess redundancy among candidates
+    :param filter_type: type of neighbourhood used to perform spatial filter, either 'Neumann' or 'Moore'
+    :param normalize_distance: bool, whether to normalize distances
+    :param nodata: float, no data value
+    :return:
+        em: endmember spectra (2D-array, float, shape (m endmembers, b bands))
+        em_rows: endmember rows (1D-array, size m, int),
+        em_cols: endmember columns (1D-array, size m, int)
+    """
+
     image_orig = copy.deepcopy(image)
     image = copy.deepcopy(image)
     rows, cols, bands = image.shape
@@ -106,26 +127,60 @@ def endmember_extraction(image,
     return output
 
 
-def find_new_spectra(refl, refl_ref,
-                     distance_measure=auc_sam,
-                     distance_threshold=0.0001,
-                     normalize_distance=True,
-                     return_indices=True
-                     ):
+def find_match(spectra, ref,
+               distance_measure=auc_sam,
+               distance_threshold=0.01,
+               retention='closest',
+               normalize_distance=True,
+               return_new=False,
+               return_weights=False
+               ):
 
-    ind = []
+    """
+    finds spectral match between set of spectra and reference library
+    :param spectra: 2D-array of floats with shape (n target spectra, b bands), target spectra to be matched
+    :param ref: 2D-array of floats with shape (r reference spectra, b bands), reference spectra
+    :param distance_measure: distance measure used to match spectra
+    :param distance_threshold: distance threshold used to determine (dis)similarity
+    :param retention: either 'closest' or 'all'. If 'closest' only the closest match is retained. If 'all', all
+    reference spectra located within the defined distance threshold are retained, and weights are defined for each match
+    in the reference library based on its proximity to the target spectrum.
+    :param normalize_distance: bool, whether to normalize distances
+    :param return_new: bool, whether to return indices of target spectra without match in the reference library
+    :param return_weights: bool, whether to return weights, only applicable if retention='all'
+    :return:
+        matched: indices of matched spectra (list of int),
+        match_ref: index/indices of reference spectrum/spectra matched to target spectrum (list of int or list of
+        1D-array of int), see retention
+    """
 
-    for s, spec in enumerate(refl):
+    matched = []
+    match_ref = []
+    new = []
+    weights = []
 
-        dist = distance_measure(spec, refl_ref,
+    for s, spec in enumerate(spectra):
+
+        dist = distance_measure(spec, ref,
                                 norm=normalize_distance)
-        if np.all(dist > distance_threshold):
-            ind.append(s)
+        if np.all(dist >= distance_threshold):
+            new.append(s)
+        else:
+            matched.append(s)
+            if retention == 'closest':
+                match_ref.append(np.argmin(dist))
+            elif retention == 'all':
+                match_ref.append(np.where(dist < distance_threshold)[0])
+                w = dist[dist < distance_threshold]
+                w = distance_threshold - w
+                weights.append(w / w.sum())
 
-    ind = np.array(ind)
-    new_spectra = refl[ind, :]
-    output = new_spectra
-    if return_indices:
-        output = (new_spectra, ind)
+    output = (matched, match_ref)
+    if return_weights:
+        output = (matched, match_ref, weights)
+        if return_new:
+            output = (matched, match_ref, weights, new)
+    elif return_new:
+        output = (matched, match_ref, new)
 
     return output

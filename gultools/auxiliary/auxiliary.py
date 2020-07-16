@@ -1,13 +1,20 @@
-# test
-
-import osr
-import numpy as np
 import copy
 
 from gultools.io import *
 
 
 def coord2rowcol(x, y, xul, yul, xres, yres):
+
+    """
+    transforms x-y coordinates to image row-column
+    :param x: coordinate, float or iterable
+    :param y: coordinate, float or iterable
+    :param xul: x coordinate upper left corner
+    :param yul: y coordinate upper left corner
+    :param xres: x resolution
+    :param yres: y resolution
+    :return: row, col
+    """
 
     col = np.floor((x - xul) / xres)
     row = np.floor((yul - y) / yres)
@@ -24,6 +31,17 @@ def coord2rowcol(x, y, xul, yul, xres, yres):
 
 def rowcol2coord(row, col, xul, yul, xres, yres):
 
+    """
+    transforms image row-col to x-y coordinates
+    :param row: coordinate, float or iterable
+    :param col: coordinate, float or iterable
+    :param xul: x coordinate upper left corner
+    :param yul: y coordinate upper left corner
+    :param xres: x resolution
+    :param yres: y resolution
+    :return:
+    """
+
     x = col * xres + xul + xres / 2
     y = yul - row * yres - yres / 2
 
@@ -32,21 +50,26 @@ def rowcol2coord(row, col, xul, yul, xres, yres):
 
 def transform_coordinates(x_src, y_src, srs_src, srs_dst):
 
+    """
+    transforms x-y coordinates to different reference system
+    :param x_src: coordinate, float or iterable
+    :param y_src: coordinate, float or iterable
+    :param srs_src: source spatial reference system, either EPSG code (int) or WKT (string)
+    :param srs_dst: destination spatial reference system, either EPSG code (int) or WKT (string)
+    :return: x_dst, y_dst
+    """
+
     osr_srs_src = osr.SpatialReference()
     if isinstance(srs_src, str):
         osr_srs_src.ImportFromWkt(srs_src)
     elif isinstance(srs_src, int):
         osr_srs_src.ImportFromEPSG(srs_src)
-        
-    osr_srs_dst = None
+
     osr_srs_dst = osr.SpatialReference()
     if isinstance(srs_dst, str):
         osr_srs_dst.ImportFromWkt(srs_dst)
     elif isinstance(srs_dst, int):
         osr_srs_dst.ImportFromEPSG(srs_dst)
-
-    # print(dir(osr_srs_src))
-    # print(osr_srs_dst.GetLinearUnitsName())
 
     transformer = osr.CoordinateTransformation(osr_srs_src, osr_srs_dst)
     x_dst = []
@@ -67,6 +90,17 @@ def transform_coordinates(x_src, y_src, srs_src, srs_dst):
 def tile_image(image_path, tile_size, outfolder, basename,
                remove_empty_tiles=True,
                nodata=None):
+
+    """
+    tiles an image in smaller square subsets
+    :param image_path: str
+    :param tile_size: int, pixels
+    :param outfolder: str
+    :param basename: str, image names = basename + counter
+    :param remove_empty_tiles: bool
+    :param nodata: int or float
+    :return: None
+    """
 
     image, metadata = read_envi_image(image_path, load=False)
     rows = metadata['lines']
@@ -112,7 +146,17 @@ def tile_image(image_path, tile_size, outfolder, basename,
 
 
 def merge_libraries(lib_paths, out_path,
+                    source=None,
                     additional_merge_fields=None):
+
+    """
+    merges spectral libraries to a single library
+    :param lib_paths: iterable of pathways to libraries
+    :param out_path: str
+    :param source: iterable, containing a string for each library, to denote source of spectra in new merged library
+    :param additional_merge_fields: iterable with strings, additional non-ENVI default metadata fields to merge
+    :return: None
+    """
 
     path = lib_paths[0].split('.')[0] + '.hdr'
     metadata = read_envi_header(path)
@@ -121,6 +165,7 @@ def merge_libraries(lib_paths, out_path,
     fwhm = metadata['fwhm']
     spectra_names_collection = []
     spectra_collection = []
+    source_collection = []
 
     if additional_merge_fields is not None:
         fields = list(additional_merge_fields)
@@ -129,7 +174,7 @@ def merge_libraries(lib_paths, out_path,
         fields = None
         fields_collection = None
 
-    for lib_path in lib_paths:
+    for l, lib_path in enumerate(lib_paths):
 
         spectra, metadata = read_envi_library(lib_path)
 
@@ -142,6 +187,8 @@ def merge_libraries(lib_paths, out_path,
 
         spectra_collection.append(spectra)
         spectra_names_collection.append(metadata['spectra names'])
+        if source is not None:
+            source_collection.append([source[l]] * spectra.shape[0])
 
         if fields:
 
@@ -155,6 +202,8 @@ def merge_libraries(lib_paths, out_path,
     metadata['description'] = 'merged library'
     metadata['spectra names'] = spectra_names
     metadata['lines'] = len(spectra_names)
+    if source is not None:
+        metadata['source'] = np.concatenate(source_collection)
 
     if fields:
 

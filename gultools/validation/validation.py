@@ -5,6 +5,16 @@ from scipy.stats import norm
 
 def kappa_coefficient(est, ref, labels=None):
 
+    """
+    Computes overall kappa coefficient based on estimated and reference set of class labels.
+    :param est: 1D-array of int or str, estimated class labels
+    :param ref: 1D-array of int or str, reference class labels
+    :param labels: iterable of int or str, subset of classes to use to calculate kappa
+    :return:
+        kappa: float, kappa coefficient
+        var: float, estimated variance of kappa coefficient
+    """
+
     # calculate the confusion matrix
     cm = confusion_matrix(ref, est, labels=labels)
     cm = cm.T  # transpose confusion matrix so that rows = estimates and columns = reference (Congalton & Green style)
@@ -44,6 +54,16 @@ def kappa_coefficient(est, ref, labels=None):
 
 def conditional_kappa_coefficients(est, ref, labels=None):
 
+    """
+    Computes conditional class-wise kappa coefficients based on estimated and reference set of class labels.
+    :param est: 1D-array of int or str, estimated class labels
+    :param ref: 1D-array of int or str, reference class labels
+    :param labels: iterable of int or str, subset of classes to use to calculate kappa
+    :return:
+        kappas: 1D-array of floats, conditional class-wise kappa coefficients
+        vars: 1D-array of floats, estimated variances of conditional class-wise kappa coefficients
+    """
+
     # calculate the confusion matrix
     cm = confusion_matrix(ref, est, labels=labels)
     cm = cm.T  # transpose confusion matrix so that rows = estimates and columns = reference (Congalton & Green style)
@@ -75,6 +95,16 @@ def conditional_kappa_coefficients(est, ref, labels=None):
 
 def test_significance(kappa, var, confidence=0.05):
 
+    """
+    Tests if (conditional) kappa coefficients are significantly different from zero.
+    :param kappa: float or iterable of floats, (conditional) kappa coefficient(s)
+    :param var: float or iterable of floats, estimated variances of (conditional) kappa coefficient(s)
+    :param confidence: float, desired confidence level
+    :return:
+        z: float or iterable of floats, z-value(s) corresponding to difference(s)
+        crit: float, critical value, if z > crit -> reject H0: kappa1 = kappa2
+    """
+
     # if z > crit -> reject H0: kappa = 0
     z = kappa / var**0.5
     crit = norm().ppf(1 - confidence / 2)
@@ -84,12 +114,19 @@ def test_significance(kappa, var, confidence=0.05):
 
 def test_signifance_difference(kappa1, kappa2, var1, var2, confidence=0.05):
 
-    # if z > crit -> reject H0: kappa1 = kappa2
+    """
+    Tests significance of difference between (conditional) kappa coefficients.
+    :param kappa1: float or iterable of floats, first (conditional) kappa coefficient(s)
+    :param kappa2: float or iterable of floats, second (conditional) kappa coefficient(s)
+    :param var1: float or iterable of floats, first estimated variances of (conditional) kappa coefficient(s)
+    :param var2: float or iterable of floats, second estimated variances of (conditional) kappa coefficient(s)
+    :param confidence: float, desired confidence level
+    :return:
+        z: float or iterable of floats, z-value(s) corresponding to difference(s)
+        crit: float, critical value, if z > crit -> reject H0: kappa1 = kappa2
+    """
+
     z = np.abs(kappa1 - kappa2) / (var1 + var2)**0.5
     crit = norm().ppf(1 - confidence / 2)
 
     return z, crit
-
-
-
-

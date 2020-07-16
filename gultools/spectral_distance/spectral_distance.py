@@ -3,6 +3,21 @@ import copy
 
 eps = np.finfo(float).eps
 
+"""
+This module contains several conventional distance measures. Most can be applied in normalized and non-normalized form.
+See 'normalize_distance' for more explanation.
+
+Each distance function takes two 2D-arrays of floats as inputs. Only reflectance values ranging between 0 and 1 are
+accepted. The number of columns (bands) must be equal. The number of rows must either be equal (pairwise) or one of them
+must be equal to 1 (one vs. rest). Each function returns a 1D-array of floats containing distances. The length of this
+vector = max(n_row1, n_row2).
+"""
+
+
+"""
+Support functions
+"""
+
 
 def check_dims_values(array1, array2):
 
@@ -38,6 +53,11 @@ def check_dims_values(array1, array2):
 
 def normalize_distance(distance_measure, distance, n_dims):
 
+    """
+    Distance normalization is applied by dividing distances by a maximum distance value. This maximum value is
+    estimated by computing the distance between two opposite/complementary signals.
+    """
+
     signal = np.zeros(n_dims)
     signal[0:n_dims + 1:2] = 1
     signal_complement = 1.0 - signal
@@ -47,6 +67,11 @@ def normalize_distance(distance_measure, distance, n_dims):
     distance_norm = distance / max_dist
 
     return distance_norm
+
+
+"""
+Single distance measures
+"""
 
 
 def auc(array1, array2, norm=True):
@@ -207,12 +232,18 @@ def jmd(array1, array2, norm=True):
 
     return dist.squeeze()
 
+
 """
 Hybrid distance measures
 """
 
 
 def auc_sam(array1, array2, norm=True):
+
+    """
+    This is an experimental hybrid distance measure that combines information on spectral shape and amplitude. It is
+    normalized by definition.
+    """
 
     array1, array2 = check_dims_values(array1, array2)
 

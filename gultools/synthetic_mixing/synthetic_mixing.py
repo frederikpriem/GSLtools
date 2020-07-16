@@ -12,14 +12,22 @@ def synthetic_mixing(spectra, names, size,
                      ):
     
     """
-    :param libpath: str
-    :param size: int, sample size
-    :param complexity: list or tuple of floats, first element corresponds to fraction binary, second to fraction ternary
-     etc.
-    :param include_original: bool
-    :param sampling: str or dict, 'random', or 'stratified' or dict {class name:weight}
-    :param background: str or list of str, classes not included in fraction labels
-    :return: 
+    Randomly generates synthetic linear mixtures based on a given set of spectra.
+    :param spectra: 2D-array of floats with shape (n spectra, b bands)
+    :param names: 1D-array of strings with shape (n spectra,), contains class label of each spectrum
+    :param size: int, number of synthetic mixtures to generate
+    :param complexity: iterable of floats, weights given to generating binary, ternary, quaternary ... mixtures
+    :param include_original: bool, whether to include the original spectra in the output array of spectra
+    :param sampling: str, type of sampling used, either 'random' or 'stratified'
+    :param background: str or iterable of strings, classes considered as background whose fractions are not to be taken
+    in account
+    :param only_within_class_mixing: bool, False by default, whether to only perform withing class mixing
+    :param only_between_class_mixing: bool, False by default, whether to only perform between class mixing
+    :param return_dominant_class: bool, False by default, whether to return the class labels corresponding to the
+    highest class fraction of each generated mixture.
+    :return:
+        mix: 2D-array of floats with shape (m mixtures, b bands), containing reflectance values of synthetic mixtures
+        frac: 2D-array of floats with shape (m mixtures, c classes), containing fraction labels of each mixture
     """
 
     numspec = spectra.shape[0]
@@ -50,7 +58,7 @@ def synthetic_mixing(spectra, names, size,
 
     weights /= weights.sum()
 
-    # make sure that complexity vector sums to 1
+    # make sure that the complexity vector sums to 1
     complexity = np.array(complexity)
     complexity /= complexity.sum()
 
@@ -91,7 +99,7 @@ def synthetic_mixing(spectra, names, size,
 
             specind2 = np.random.choice(range(numspec),
                                         size=num - 1,
-                                        replace=True,
+                                        replace=False,
                                         p=p)
 
             specind = np.concatenate((specind1, specind2))
@@ -169,6 +177,16 @@ def synthetic_mixing(spectra, names, size,
 
 def perturbate_spectra(spectra, intensity,
                        mode='relative'):
+
+    """
+    Performs random perturbations on spectra using a normal distribution.
+    :param spectra: 2D-array of floats with shape (n spectra, b bands)
+    :param intensity: float, intensity of random perturbation (see mode)
+    :param mode: str, either 'absolute' or 'relative'. If 'absolute' then band-wise perturbations are sampled from the
+    same normal distribution with standard deviation = intensity. If 'relative' then band-wise perturbations are sampled
+    from customized normal distributions with standard deviation = reflectance * intensity.
+    :return: pertubated: 2D-array of floats with shape (n spectra, b bands)
+    """
 
     perturbated = np.zeros(spectra.shape)
 

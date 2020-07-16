@@ -2,115 +2,63 @@ import numpy as np
 import copy
 from tqdm import tqdm
 from gultools.spectral_distance import sid_sam
-from sklearn.linear_model import LinearRegression
 
 
 def iterative_adaptive_smoothing(image,
                                  iterations=5,
                                  distance_measure=sid_sam,
-                                 distance_threshold=0.000001):
+                                 distance_threshold=0.000001,
+                                 normalize_distance=True):
 
-    image = copy.deepcopy(image)
+    """
+    performs spatially adaptive smoothing on image over several iterations
+    :param image: 3D-array of shape (rows, cols, bands)
+    :param iterations: int
+    :param distance_measure: object, spectral distance measure used to assess (dis)similarity between neighbouring pixels
+    :param distance_threshold: float, distance threshold used to determine whether two pixels are similar
+    :param normalize_distance: bool, whether to use normalized distance measure
+    :return:
+    """
+
     image[image > 1] = 1
     image[image < 0] = 0
     rows, cols, bands = image.shape
-    total = iterations * rows * cols
+    image = np.pad(image, 1,
+                   mode='constant',
+                   constant_values=0)
+    image = image[:, :, 1:-1]
+    image_array = image.reshape((rows + 2) * (cols + 2), bands)
 
-    with tqdm(total=total) as t:
+    vshifts = [-1, 0, 1]
+    hshifts = [-1, 0, 1]
+    iterations = list(range(iterations))
 
-        for it in range(iterations):
+    for it in tqdm(iterations):
 
-            new_image = copy.deepcopy(image)
+        new_image = copy.deepcopy(image)
+        weights = np.ones((rows + 2, cols + 2))
 
-            for row in range(rows):
+        for h in hshifts:
 
-                for col in range(cols):
+            for v in vshifts:
 
-                    spectrum = image[row, col, :]
+                if v != 0 or h != 0:
 
-                    if spectrum.sum != 0 and spectrum.sum != spectrum.size:
+                    image_shift = np.roll(image, (v, h), axis=(0, 1))
+                    image_shift_array = image_shift.reshape((rows + 2) * (cols + 2), bands)
 
-                        rmin = max(0, row - 1)
-                        rmax = row + 2
-                        cmin = max(0, col - 1)
-                        cmax = col + 2
-                        neigh = image[rmin:rmax, cmin:cmax, :]
-                        neigh = neigh.reshape(neigh.shape[0] * neigh.shape[1], bands)
+                    check = distance_measure(image_array, image_shift_array,
+                                             norm=normalize_distance)
+                    check = check < distance_threshold
+                    check = check.astype(float)
+                    check = check.reshape(rows + 2, cols + 2)
+                    weights += check
+                    check = np.expand_dims(check, axis=2)
+                    new_image += check * image_shift
 
-                        dist = distance_measure(spectrum, neigh)
-                        weights = np.where(dist < distance_threshold, 1.0, 0.0)
-                        weights /= weights.sum()
-                        new_image[row, col, :] = np.sum(np.expand_dims(weights, 1) * neigh, axis=0)
+        weights = np.expand_dims(weights, axis=2)
+        image = new_image / weights
 
-                        t.update()
-
-            image = copy.deepcopy(new_image)
+    image = image[1:-1, 1:-1, :]
 
     return image
-
-
-def estimate_snr(image, homogeneous_areas):
-
-    bands = image.shape[2]
-    area_ids = np.unique(homogeneous_areas)
-    area_ids = area_ids[area_ids > 0]
-    n_area = area_ids.size
-
-    snr_collection = np.zeros((n_area, bands))
-
-    for a, area_id in enumerate(area_ids):
-
-        rows, cols = np.where(homogeneous_areas == area_id)
-        spectra = image[rows, cols, :]
-        signal = spectra.mean(axis=0)
-        noise = spectra.std(axis=0)
-        snr = signal / noise
-        snr[np.isinf(snr)] = 0
-        snr[np.isnan(snr)] = 0
-        snr_collection[a, :] = snr
-
-    snr_mean = snr_collection.mean(axis=0)
-    snr_min = snr_collection.min(axis=0)
-    snr_max = snr_collection.max(axis=0)
-    if n_area > 1:
-        snr_std = snr_collection.std(axis=0)
-    else:
-        snr_std = None
-
-    return snr_mean, snr_std, snr_min, snr_max
-
-
-def signal_noise_decomposition(image,
-                               ss=1000):
-
-    rows, cols, bands = image.shape
-    image = image.reshape(rows * cols, bands)
-    signal = np.zeros((rows * cols, bands))
-    noise = np.zeros((rows * cols, bands))
-
-    if ss == 'all':
-        ss = rows * cols
-
-    sample = np.random.choice(range(rows * cols),
-                              size=ss,
-                              replace=False)
-
-    band_list = list(range(bands))
-
-    for b in tqdm(band_list):
-
-        band = image[:, b]
-        other_bands = np.delete(image, b, axis=1)
-        y = band[sample]
-        x = other_bands[sample, :]
-        model = LinearRegression(fit_intercept=False)
-        model.fit(x, y)
-        band_signal = model.predict(other_bands)
-        band_noise = band - band_signal
-        signal[:, b] = copy.deepcopy(band_signal)
-        noise[:, b] = copy.deepcopy(band_noise)
-
-    signal = signal.reshape(rows, cols, bands)
-    noise = noise.reshape(rows, cols, bands)
-
-    return signal, noise
