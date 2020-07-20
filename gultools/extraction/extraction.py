@@ -27,7 +27,7 @@ def endmember_extraction(image,
     :param image: 3D-array of shape (rows, cols, bands)
     :param normalize_image: bool, whether to brightness normalize each pixel in the image
     :param return_candidate_indices: bool, whether to return indices of all candidate EM
-    :param distance_measure: object, distance measure used
+    :param distance_measure: object, distance measure used (see module 'spectral distance' for possible measures)
     :param distance_threshold_filter: float, distance threshold used to find pure patches
     :param distance_threshold_redundancy: float, distance threshold used to assess redundancy among candidates
     :param filter_type: type of neighbourhood used to perform spatial filter, either 'Neumann' or 'Moore'
