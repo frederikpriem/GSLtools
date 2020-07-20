@@ -3,6 +3,10 @@ import copy
 from gultools.spectral_distance import *
 import matplotlib.pyplot as plt
 
+"""
+This module handles automated endmember extraction from imagery.
+"""
+
 
 def endmember_extraction(image,
                          normalize_image=False,

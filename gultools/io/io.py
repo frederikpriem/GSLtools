@@ -4,6 +4,10 @@ import numpy as np
 import ogr
 import osr
 
+"""
+This module handles reading and writing of ENVI spectral libraries and binary image files
+"""
+
 # lookup table for ENVI-Python data types
 dtype_map = [(1, np.uint8),                   # unsigned byte
              (2, np.int16),                   # 16-bit int

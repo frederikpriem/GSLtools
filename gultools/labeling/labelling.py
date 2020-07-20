@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 from gultools.spectral_distance import *
 
+"""
+This module provides function that support class labelling of spectra
+"""
+
 
 def insert_spectra_labels_in_metadata(ids, labels, metadata):
 

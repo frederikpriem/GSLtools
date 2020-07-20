@@ -3,6 +3,10 @@ import copy
 from tqdm import tqdm
 from gultools.spectral_distance import sid_sam
 
+"""
+This module handles denoising of imagery.
+"""
+
 
 def iterative_adaptive_smoothing(image,
                                  iterations=5,

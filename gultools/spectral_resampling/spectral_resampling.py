@@ -3,6 +3,11 @@ from scipy.ndimage import gaussian_filter
 import copy
 
 
+"""
+This module handles spectral resampling of imagery and libraries
+"""
+
+
 def spectral_resampling(new_wavs, new_fwhm, old_wavs, old_fwhm, old_refl):
 
     """

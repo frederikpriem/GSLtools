@@ -2,6 +2,10 @@ import copy
 
 from gultools.io import *
 
+"""
+This module contains several support functions that can't be categorized elsewhere.
+"""
+
 
 def coord2rowcol(x, y, xul, yul, xres, yres):
 

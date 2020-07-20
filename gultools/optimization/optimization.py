@@ -8,6 +8,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 
+"""
+This module addresses library optimization.
+"""
+
+
 def comprehensive(spectra,
                   distance_measure=l1_sam,
                   distance_threshold=0.05,

@@ -3,6 +3,11 @@ from sklearn.metrics import confusion_matrix
 from scipy.stats import norm
 
 
+"""
+This module provides functions that allow validation of produced map products
+"""
+
+
 def kappa_coefficient(est, ref, labels=None):
 
     """

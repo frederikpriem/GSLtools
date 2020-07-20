@@ -1,6 +1,11 @@
 import numpy as np
 
 
+"""
+This module handles synthetic mixing of discrete single class label spectra
+"""
+
+
 def synthetic_mixing(spectra, names, size,
                      complexity=(0.5, 0.5),
                      include_original=False,
