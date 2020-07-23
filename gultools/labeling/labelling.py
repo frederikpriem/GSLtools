@@ -31,3 +31,27 @@ def insert_spectra_labels_in_metadata(ids, labels, metadata):
     metadata['spectra names'] = df['labels'].values
 
     return metadata
+
+
+def relabel(metadata, labels_old, labels_new):
+
+    """
+    Relabels spectra names in a metadata dictionary based on equal-sized sets of old and new labels.
+    :param metadata: dictionary, metadata dictionary of spectral library
+    :param labels_old: 1D-array of strings with shape (l labels,), the old labels to be replaced
+    :param labels_new: 1D-array of strings with shape (l labels,), the new labels
+    :return: metadata: dictionary, updated metadata dictionary
+    """
+
+    labels = np.array(metadata['spectra names'], dtype=str)
+    labels_output = np.empty(labels.size, dtype=str)
+
+    for label_old, label_new in zip(labels_old, labels_new):
+
+        ind = np.where(labels == label_old)[0]
+        labels_output[ind] = label_new
+        print(label_new)
+
+    metadata['spectra names'] = labels_output
+
+    return metadata
