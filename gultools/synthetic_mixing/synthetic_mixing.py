@@ -85,8 +85,11 @@ def synthetic_mixing(spectra, names, size,
         randfrac = np.random.rand(num)
 
         for n in range(1, num):
-            
-            randfrac[n] = 1 - np.sum(randfrac[:n])
+
+            if n == num - 1:
+                randfrac[n] = 1 - np.sum(randfrac[:n])
+            else:
+                randfrac[n] = np.random.uniform(0, 1 - np.sum(randfrac[:n]))
 
         # randomly assign library spectra to each fraction
         # use weights to perform stratified sampling
