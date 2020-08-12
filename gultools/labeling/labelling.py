@@ -43,14 +43,15 @@ def relabel(metadata, labels_old, labels_new):
     :return: metadata: dictionary, updated metadata dictionary
     """
 
-    labels = np.array(metadata['spectra names'], dtype=str)
-    labels_output = np.empty(labels.size, dtype=str)
+    # Got a weird bug here where only the first two characters of labels were written to output.
+    # It has something to do with numpy automatically converting strings containing only integers
+    # to dtype('Ux'), where x is the highest number of integer digits in the data. Not sure why ...
+    labels = metadata['spectra names'].astype(np.dtype('U1000'))
+    labels_output = copy.deepcopy(labels)
 
     for label_old, label_new in zip(labels_old, labels_new):
 
-        ind = np.where(labels == label_old)[0]
-        labels_output[ind] = label_new
-        print(label_new)
+        labels_output[labels == label_old] = label_new
 
     metadata['spectra names'] = labels_output
 

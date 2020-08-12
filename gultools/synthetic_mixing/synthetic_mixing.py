@@ -79,7 +79,7 @@ def synthetic_mixing(spectra, names, size,
 
         # sample number of spectra to be used in mixture
         rnd = np.random.rand()
-        num = np.argmax(cs <= rnd) + 2
+        num = np.argmax(cs >= rnd) + 2
 
         # randomly generate fractions
         randfrac = np.random.rand(num)

@@ -96,7 +96,7 @@ def read_envi_header(hdr,
     if not format_iter:
         format_iter = common_iter
     else:
-        format_iter = common_iter + list(format_iter)
+        format_iter = common_iter + [f for f in format_iter.items()]
 
     for f in format_iter:
 

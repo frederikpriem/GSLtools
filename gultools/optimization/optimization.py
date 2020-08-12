@@ -412,6 +412,8 @@ def dice(image, spectra,
         d = np.mean(d**2, axis=1)**0.5
     elif mode == 'max':
         d = d.max(axis=1)
+    else:
+        raise ValueError("mode must be 'l1', 'l2' or 'max'")
 
     return d
 
