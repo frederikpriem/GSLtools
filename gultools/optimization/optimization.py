@@ -178,8 +178,10 @@ def ies(spectra, labels, classifier,
     else:
 
         # find the inter-class pair of spectra that best predicts all label
-        combs = np.array(list(combinations(np.arange(labels.size), 2)))
-        combs_labels = np.array(list(combinations(labels, 2)))
+        combs = list(combinations(np.arange(labels.size), 2))
+        combs = np.array(combs)
+        combs_labels = list(combinations(labels, 2))
+        combs_labels = np.array(combs_labels)
         con = np.equal(combs_labels[:, 0], combs_labels[:, 1])
         combs = combs[np.where(con)[0]]
 
