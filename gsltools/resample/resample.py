@@ -1,67 +1,77 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.stats import norm
+import gsltools._check as check
 import copy
 
 
 """
-This module handles spectral resampling of imagery and libraries
+This module handles spectral resampling and clustering of imagery and libraries
 """
 
 
 def spectral_resampling(new_cwav, new_fwhm, old_cwav, old_fwhm, old_refl,
-                        resample_threshold=0.5,
-                        fill_missing=False,
-                        raise_error_if_missing=True):
+                        band_overlap_threshold=0.5,
+                        fill_insufficient_overlap=None,
+                        raise_insufficient_overlap=True,
+                        error_prefix=''):
 
     """
-    This function uses spectral convolution to spectrally resample libraries or images to other band definitions.
-    It assumes that bands are characterized by Gaussian Spectral Response Functions (SRF) that can be parametrized by
+    This function uses spectral convolution to spectraly resample libraries or images to other band definitions.
+    It assumes that bands are characterized by a Gaussian Spectral Response Function (SRF) that can be parametrized with
     the given central wavelengths and FWHM.
-    To avoid resampling in case of insufficient overlap between new and old band definitions, the resample threshold is
+    To avoid resampling in case of insufficient overlap between new and old band definitions, the overlap threshold is
     used. The default value of 0.5 means that at least 1 old band must fall within the FWHM range of each new band,
-    i.e. the wavelength range of the SRF where intensity = 0.5 * max. Lowering the threshold eases this restriction and
-    vice versa. Setting the threshold to zero effectively negates the constraint, setting it to 1 means that one old
-    central wavelength must be equal to the new central wavelength.
+    i.e. the wavelength range of the SRF where min. intensity = 0.5 * max. Lowering the threshold eases this restriction
+    and vice versa. Setting the threshold to zero effectively negates the constraint, setting it to 1 means that there
+    must be an exact match between an old and new central wavelength for the latter to be computed.
     """
 
-    # check input
-    for check in [new_cwav, new_fwhm, old_cwav, old_fwhm]:
-        
-        if not (isinstance(check, list) or isinstance(check, tuple) or isinstance(check, np.ndarray)):
-            raise TypeError("wavelengths and FWHM must be an array-like")
-        try:
-            np.array(check, dtype=float)
-        except ValueError:
-            raise TypeError("wavelengths and FWHM must be (convertible to) floats")
+    check.is_not_none(new_cwav,
+                      object_name='new_cwav')
+    check.is_not_none(new_fwhm,
+                      object_name='new_fwhm')
+    check.is_not_none(old_cwav,
+                      object_name='old_cwav')
+    check.is_not_none(old_fwhm,
+                      object_name='old_fwhm')
+    check.is_not_none(old_refl,
+                      object_name='old_refl')
+    check.is_array_like(new_cwav,
+                        dimensions=1,
+                        repetition_allowed=False,
+                        dtype=float,
+                        object_name='new_cwav')
+    check.is_array_like(new_fwhm,
+                        dimensions=1,
+                        size=len(new_cwav),
+                        dtype=float,
+                        object_name='new_fwhm')
+    check.is_array_like(old_cwav,
+                        dimensions=1,
+                        repetition_allowed=False,
+                        dtype=float,
+                        object_name='old_cwav')
+    check.is_array_like(old_fwhm,
+                        dimensions=1,
+                        size=len(old_cwav),
+                        dtype=float,
+                        object_name='old_fwhm')
+    check.is_array_like(old_refl,
+                        dimensions=2,
+                        dtype=float,
+                        object_name='old_refl')
+    check.is_float(band_overlap_threshold,
+                   ge=0,
+                   le=1,
+                   object_name='overlap_threshold')
+    check.is_float(fill_insufficient_overlap,
+                   object_name='fill_insufficient_overlap')
+    check.is_bool(raise_insufficient_overlap,
+                  object_name='raise_insufficient_overlap')
+    check.is_str(error_prefix,
+                 object_name='error_prefix')
 
-    if len(new_cwav) != len(new_fwhm):
-        raise ValueError('new wavelengths and FWHM must have same length')
-
-    if len(old_cwav) != len(old_fwhm):
-        raise ValueError('old wavelengths and FWHM must have same length')
-
-    if not isinstance(old_refl, np.ndarray):
-        raise TypeError('old_refl must be a Numpy array')
-    if not len(old_refl.shape) == 2:
-        raise ValueError('old_refl must have two dimensions, i.e. observations (rows) and bands (columns)')
-    if old_refl.shape[0] == 0 or old_refl.shape[1] == 0:
-        raise ValueError("the number of rows and columns in old_refl must be greater than zero")
-    try:
-        old_refl.astype(float)
-    except ValueError:
-        raise TypeError('old_refl must be (convertible to) floats')
-    if np.any(old_refl < 0, axis=None):
-        raise ValueError("old_refl mustn't contain negative values")
-
-    if not isinstance(resample_threshold, float):
-        raise ValueError('resample_threshold must be a float in the [0, 1] interval')
-    if (resample_threshold < 0) or (resample_threshold > 1):
-        raise ValueError('resample_threshold must be a float in the [0, 1] interval')
-
-    if not(isinstance(fill_missing, float) or isinstance(fill_missing, float) or (fill_missing is False)):
-        raise ValueError('fill_missing must either be False or a number (float or integer)')
-    
     # calculate reflectance values for each new band
     new_refl = np.zeros((old_refl.shape[0], new_cwav.size))
 
@@ -71,112 +81,23 @@ def spectral_resampling(new_cwav, new_fwhm, old_cwav, old_fwhm, old_refl,
         w1 = norm(cwav, std).pdf(old_cwav).reshape(1, -1)
         w2 = np.array(old_fwhm).reshape(1, -1)
 
-        if np.all(w1 < resample_threshold * norm(cwav, std).pdf(cwav)) and fill_missing:
-            new_refl[:, band] = fill_missing
-        if np.all(w1 < resample_threshold * norm(cwav, std).pdf(cwav)) and not fill_missing:
-            if raise_error_if_missing:
-                raise ValueError('insufficient overlap between new band (cwav={}, fwhm={}) and old bands'.format(cwav, fwhm))
+        if np.all(w1 < band_overlap_threshold * norm(cwav, std).pdf(cwav)) and fill_insufficient_overlap is not None:
+            new_refl[:, band] = fill_insufficient_overlap
+        elif np.all(w1 < band_overlap_threshold * norm(cwav, std).pdf(cwav)) and not fill_insufficient_overlap is not None:
+            if raise_insufficient_overlap:
+                raise ValueError('{}insufficient overlap between new band (cwav={}, fwhm={}) and old bands'.format(error_prefix, cwav, fwhm))
             else:
-                new_refl = None
-                break
+                new_refl[:, band] = np.nan
         else:
             new_refl[:, band] = np.sum(w1 * w2 * old_refl, axis=1) / np.sum(w1 * w2, axis=None)
 
     return new_refl
 
-    # """
-    # This function spectrally resamples reflectance data from a source band definition to newly specified one. This code
-    # is an adaptation from https://github.com/ACCarnall/SpectRes/blob/master/spectres/spectral_resampling.py.
-    #
-    # It requires central wavelengths (wavs) and bandwidths (fwhm) of both definitions.
-    #
-    # Make sure that the old and new band definitions overlap at least partially, otherwise, an error will be raised.
-    #
-    # Also make sure that new_wavs, new_fwhm, old_wavs and old_fwhm share the same unit, e.g. micrometer or nanometer.
-    #
-    # Reflectance data can be expressed as non-negative floating point numbers or integers.
-    #
-    # :param new_wavs: 1D-array, target wavelenghts, i.e. band central wavelengths
-    # :param new_fwhm: 1D-array, target full widths at half maximum, i.e. bandwidth
-    # :param old_wavs: 1D-array, source wavelenghts, corresponding to old_refl
-    # :param old_fwhm: 1D-array, source full widths at half maximum, corresponding to old_refl
-    # :param old_refl: 2D-array, source reflectance data, rows = observations, columns = bands
-    #
-    # :return: new_refl: 2D-array, resampled reflectance data in new band definition,
-    # rows = observations, columns = bands
-    # """
-
-    # # check that for every new band there is at least 1 (partially) overlapping old band
-    # for newband in range(new_wavs.shape[0]):
-    #
-    #     conleft1 = (new_wavs[newband] - new_fwhm[newband] / 2.) >= (old_wavs - old_fwhm / 2.)
-    #     conleft2 = (new_wavs[newband] - new_fwhm[newband] / 2.) <= (old_wavs + old_fwhm / 2.)
-    #     conleft = np.any(np.logical_and(conleft1, conleft2))
-    #
-    #     conright1 = (new_wavs[newband] + new_fwhm[newband] / 2.) >= (old_wavs - old_fwhm / 2.)
-    #     conright2 = (new_wavs[newband] + new_fwhm[newband] / 2.) <= (old_wavs + old_fwhm / 2.)
-    #     conright = np.any(np.logical_and(conright1, conright2))
-    #
-    #     confull1 = (new_wavs[newband] - new_fwhm[newband] / 2.) <= (old_wavs - old_fwhm / 2.)
-    #     confull2 = (new_wavs[newband] + new_fwhm[newband] / 2.) >= (old_wavs + old_fwhm / 2.)
-    #     confull = np.any(np.logical_and(confull1, confull2))
-    #
-    #     if not fill_missing and not (conleft or conright or confull):
-    #         raise ValueError("the new bands specified must overlap at least"
-    #                          "partially with the old band definitions")
-    #
-    # # make output array
-    # new_refl = np.zeros((old_refl.shape[0], new_wavs.size))
-    #
-    # start = 0
-    # stop = 0
-    #
-    # # Calculate new reflectance values band per band
-    # for newband in range(new_wavs.shape[0]):
-    #
-    #     # Find first old band that is (partially) covered by the new band
-    #     while (new_wavs[newband] - new_fwhm[newband] / 2) > (old_wavs[start] + old_fwhm[start] / 2):
-    #         start += 1
-    #         if start == old_wavs.size:
-    #             break
-    #
-    #     # Find last old band that is (partially) covered by the new band
-    #     while (old_wavs[stop] - old_fwhm[stop] / 2) < (new_wavs[newband] + new_fwhm[newband] / 2):
-    #         if stop == old_wavs.size - 1:
-    #             break
-    #         else:
-    #             stop += 1
-    #
-    #     # If the new band lies fully within an old band, they are considered identical
-    #     if stop == start:
-    #
-    #         new_refl[:, newband] = old_refl[:, start]
-    #
-    #     # Otherwise, multiply the widths of the first and last old bands by their overlapping fractions
-    #     elif start < stop:
-    #
-    #         start_factor = np.abs((old_wavs[start] + old_fwhm[start] / 2) - (new_wavs[newband] - new_fwhm[newband] / 2))
-    #         start_factor /= old_fwhm[start]
-    #
-    #         end_factor = np.abs((new_wavs[newband] + new_fwhm[newband] / 2) - (old_wavs[stop] - old_fwhm[stop] / 2))
-    #         end_factor /= old_fwhm[stop]
-    #
-    #         widths = copy.deepcopy(old_fwhm[start:stop])
-    #         widths[0] *= start_factor
-    #         widths[-1] *= end_factor
-    #
-    #         # calculate reflectance values for new band
-    #         values = widths * old_refl[:, start:stop]
-    #         new_refl[:, newband] = values.sum(axis=1)
-    #         new_refl[:, newband] /= widths.sum()
-    #
-    # return new_refl
-
 
 def bandclust(spectra, wavelengths, bandwidths,
               subbands_start=None,
-              nbins='FD',
-              sigma=1):
+              nbins=None,
+              sigma=1.):
 
     """
     Clusters adjacent bands based on Mutual Information (MI). See corresponding paper for more information.
@@ -185,8 +106,8 @@ def bandclust(spectra, wavelengths, bandwidths,
     :param bandwidths: 1D-array of float of shape (b bands), containing bandwidths for each band
     :param subbands_start: Iterable containing int values, initial subband definition. Values must range between 0 and
     b - 1. This can be used to avoid clustering of bands over a spectral interval that is not covered by the sensor.
-    :param nbins: int or str, if int number of bins used to estimate mutual information, if str then nbins must be equal
-    to 'FD', see 'mutual_information'.
+    :param nbins: int , number of bins used to estimate mutual information, if None then nbins is estimated with
+    Freedman-Diaconis rule.
     :param sigma: float, parameter used to smooth the MI curve prior to subband splitting.
     :return:
         new_wavelengths: 1D-array of floats with shape (b bands,), central wavelengths of new clustered band
@@ -195,10 +116,51 @@ def bandclust(spectra, wavelengths, bandwidths,
 
     """
 
+    check.is_not_none(spectra,
+                      object_name='spectra')
+    check.is_not_none(wavelengths,
+                      object_name='wavelengths')
+    check.is_not_none(bandwidths,
+                      object_name='bandwidths')
+    check.is_array_like(spectra,
+                        dimensions=2,
+                        dtype=float,
+                        object_name='spectra')
+    check.is_array_like(wavelengths,
+                        dimensions=1,
+                        dtype=float,
+                        object_name='wavelengths')
+    check.is_array_like(bandwidths,
+                        dimensions=1,
+                        dtype=float,
+                        object_name='bandwidths')
+    check.is_array_like(subbands_start,
+                        dimensions=1,
+                        dtype=int,
+                        object_name='subbands_start')
+    subbands_start = [int(s) for s in subbands_start]
+
+    for s in subbands_start:
+
+        check.is_int(s,
+                     ge=0,
+                     le=spectra.shape[1] - 1,
+                     object_name='subbands_start elements')
+
+    check.is_int(nbins,
+                 object_name='nbins')
+    check.is_float(sigma,
+                   g=0,
+                   object_name='sigma')
+
+    spectra = np.array(spectra, dtype=float)
+    wavelengths = np.array(wavelengths, dtype=float)
+    bandwidths = np.array(bandwidths, dtype=float)
+
     def mutual_information(x, y):
 
         # determine the optimal number of bins for MI estimation using the Freedman-Diaconis rule
-        if nbins == 'FD':
+        if nbins is None:
 
             n = x.size
             iqr_x = np.quantile(x, 0.75) - np.quantile(x, 0.25)
@@ -328,8 +290,16 @@ def bandclust(spectra, wavelengths, bandwidths,
         if B == len(subbands[:-1]):
             bmax += 1
 
-        new_wavelength = np.mean([wavelengths[bmin], wavelengths[bmax - 1]])
-        new_bandwidth = wavelengths[bmax - 1] + bandwidths[bmax - 1] / 2 - (wavelengths[bmin] - bandwidths[bmin] / 2)
+        # look up moments of mixed distributions to understand this step
+        new_wavelength = np.sum(wavelengths[bmin:bmax] * bandwidths[bmin:bmax]) / np.sum(bandwidths[bmin:bmax])
+        new_bandwidth = bandwidths[bmin:bmax]**2 + wavelengths[bmin:bmax]**2 - new_wavelength**2
+        new_bandwidth = np.sum(new_bandwidth * bandwidths[bmin:bmax])
+        new_bandwidth /= np.sum(bandwidths[bmin:bmax])
+        new_bandwidth = new_bandwidth**0.5
+
+        # look up conversion std to fwhm to understand this step
+        new_bandwidth = new_bandwidth * 2.355
+
         new_wavelengths.append(new_wavelength)
         new_bandwidths.append(new_bandwidth)
 

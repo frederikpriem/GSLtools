@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
 """
-This module handles denoise of imagery.
+This module handles denoising of imagery.
 """
 
 
@@ -120,7 +120,7 @@ def spectral_smoothing_gaussian(spectra, wavelengths, std=0.01):
     spectra_smooth = copy.deepcopy(spectra)
     n_bands = spectra.shape[1]
 
-    for band in range(n_bands):
+    for band in tqdm(range(n_bands)):
 
         wav = wavelengths[band]
         w = norm(wav, std).pdf(wavelengths)
@@ -134,16 +134,15 @@ def spectral_smoothing_gaussian(spectra, wavelengths, std=0.01):
 def iterative_adaptive_smoothing(image,
                                  iterations=5,
                                  distance_measure=sid_sam,
-                                 distance_threshold=0.000001,
-                                 normalize_distance=True):
+                                 distance_threshold=0.000001):
 
     """
-    performs spatially adaptive smoothing on image over several iterations
+    performs spatially adaptive smoothing on an image over several iterations
+
     :param image: 3D-array of shape (rows, cols, bands)
     :param iterations: int
     :param distance_measure: object, spectral distance measure used to assess (dis)similarity between neighbouring pixels
     :param distance_threshold: float, distance threshold used to determine whether two pixels are similar
-    :param normalize_distance: bool, whether to use normalized distance measure
     :return:
     """
 
@@ -174,8 +173,7 @@ def iterative_adaptive_smoothing(image,
                     image_shift = np.roll(image, (v, h), axis=(0, 1))
                     image_shift_array = image_shift.reshape((rows + 2) * (cols + 2), bands)
 
-                    check = distance_measure(image_array, image_shift_array,
-                                             norm=normalize_distance)
+                    check = distance_measure(image_array, image_shift_array)
                     check = check < distance_threshold
                     check = check.astype(float)
                     check = check.reshape(rows + 2, cols + 2)

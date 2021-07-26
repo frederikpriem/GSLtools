@@ -45,6 +45,10 @@ def plot_spectra(spectra, wavelengths,
                  title=None,
                  xlabel=None,
                  ylabel=None,
+                 title_fontsize=8,
+                 xlabel_fontsize=8,
+                 ylabel_fontsize=8,
+                 tick_fontsize=6,
                  ylim=None,
                  colors=None,
                  linestyles=None,
@@ -123,9 +127,11 @@ def plot_spectra(spectra, wavelengths,
         ax.spines['left'].set_color('0.5')
         ax.spines['bottom'].set_color('0.5')
         ax.tick_params(axis='x',
-                       colors='0.5')
+                       colors='0.5',
+                       labelsize=tick_fontsize)
         ax.tick_params(axis='y',
-                       colors='0.5')
+                       colors='0.5',
+                       labelsize=tick_fontsize)
 
     else:
 
@@ -138,13 +144,13 @@ def plot_spectra(spectra, wavelengths,
                   fontsize=11)
 
     if title:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=title_fontsize)
 
     if xlabel:
-        ax.set_xlabel(xlabel, fontsize=11, color='0.2')
+        ax.set_xlabel(xlabel, fontsize=xlabel_fontsize, color='0.2')
 
     if ylabel:
-        ax.set_ylabel(ylabel, fontsize=11, color='0.2')
+        ax.set_ylabel(ylabel, fontsize=ylabel_fontsize, color='0.2')
 
     if ylim:
         ax.set_ylim(ylim)

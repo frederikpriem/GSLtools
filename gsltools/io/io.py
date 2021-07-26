@@ -100,7 +100,7 @@ def read_envi_header(hdr,
     md['header offset'] = int(md['header offset'])
 
     # format iterables of form "{a, b, c, ...}"
-    # check for the following common iterables
+    # _check for the following common iterables
     # additional iterables can optionally be included
     common_iter = [
         ['map info', str],  # most items of map info are numbers
@@ -176,7 +176,7 @@ def save_envi_library(path, spectra, metadata):
     if '.' in path:
         path = path.split('.')[0]
 
-    library = envi.SpectralLibrary(spectra, metadata, None)
+    library = envi.SpectralLibrary(spectra, header=metadata, params=None)
     library.save(path)
 
 
@@ -291,6 +291,3 @@ def save_envi_image(path, image, metadata):
     mm = spyfile.open_memmap(writable=True)
     mm[:, :, :] = image
     del mm
-
-
-

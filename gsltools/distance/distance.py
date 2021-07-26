@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 
-eps = np.finfo(float).eps
+eps = np.finfo(float).tiny
 
 """
 This module contains several conventional distance measures. Most can be applied in normalized and non-normalized form.

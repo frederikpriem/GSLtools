@@ -15,7 +15,6 @@ def endmember_extraction(image,
                          distance_threshold_filter=0.0001,
                          distance_threshold_redundancy=0.0005,
                          filter_type='Moore',
-                         normalize_distance=True,
                          nodata=None):
 
     """
@@ -59,7 +58,7 @@ def endmember_extraction(image,
                        constant_values=0)
     image_pad = image_pad[:, :, 1:-1]
 
-    # check if neighbouring pixel spectra are similar to the central pixel spectrum
+    # _check if neighbouring pixel spectra are similar to the central pixel spectrum
     shifts = np.arange(-1, 2)
     check = []
 
@@ -80,8 +79,7 @@ def endmember_extraction(image,
                 image_shift = np.roll(image_pad, (v, h), axis=(0, 1))
                 image_shift = image_shift[1:-1, 1:-1]
                 image_shift_array = image_shift.reshape(rows * cols, bands)
-                dist = distance_measure(image_array, image_shift_array,
-                                        norm=normalize_distance).reshape(-1, 1)
+                dist = distance_measure(image_array, image_shift_array).reshape(-1, 1)
                 check.append(dist < distance_threshold_filter)
 
     # if all neighbouring spectra are similar, retain the central pixel as a candidate
@@ -109,8 +107,7 @@ def endmember_extraction(image,
         em_loc.append(loc[ind_em])
 
         # remove the endmember and similar spectra from the array to avoid redundancy
-        dist = distance_measure(em, image_array,
-                                norm=normalize_distance)
+        dist = distance_measure(em, image_array)
         del_ind = np.where(dist < distance_threshold_redundancy)[0]
         image_array = np.delete(image_array, del_ind, 0)
         loc = np.delete(loc, del_ind)
