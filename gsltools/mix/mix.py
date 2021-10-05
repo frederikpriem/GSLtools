@@ -181,34 +181,3 @@ def synthetic_mixing(spectra, names, size,
         output = (mix, frac, dominant_class)
 
     return output
-
-
-def perturbate_spectra(spectra, intensity,
-                       mode='relative'):
-
-    """
-    Performs random perturbations on spectra with perturbations drawn from a normal distribution.
-    :param spectra: 2D-array of floats with shape (n spectra, b bands)
-    :param intensity: float, intensity of random perturbation (see mode)
-    :param mode: str, either 'absolute' or 'relative'. If 'absolute' then band-wise perturbations are sampled from the
-    same normal distribution with standard deviation = intensity. If 'relative' then band-wise perturbations are sampled
-    from customized normal distributions with standard deviation = reflectance * intensity.
-    :return: pertubated: 2D-array of floats with shape (n spectra, b bands)
-    """
-
-    perturbated = np.zeros(spectra.shape)
-
-    for s, spec in enumerate(spectra):
-
-        if mode == 'absolute':
-            perturbated[s, :] = spec + np.random.normal(0, intensity, spec.size)
-        else:
-
-            for r, refl in enumerate(spec):
-
-                perturbated[s, r] = refl + np.random.normal(0, refl * intensity)
-
-    perturbated[perturbated < 0] = 0
-    perturbated[perturbated > 1] = 1
-
-    return perturbated

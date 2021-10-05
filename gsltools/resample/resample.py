@@ -6,7 +6,7 @@ import copy
 
 
 """
-This module handles spectral resampling and clustering of imagery and libraries
+This module handles spectral resampling and clustering of imagery and libraries.
 """
 
 
@@ -71,6 +71,8 @@ def spectral_resampling(new_cwav, new_fwhm, old_cwav, old_fwhm, old_refl,
                   object_name='raise_insufficient_overlap')
     check.is_str(error_prefix,
                  object_name='error_prefix')
+    if old_refl.shape[1] != len(old_cwav) and old_refl.shape[1] != len(old_fwhm):
+        raise Exception('{}the lengths of old_cwav and old_fwhm and the number of columns in old_refl must be the same'.format(error_prefix))
 
     # calculate reflectance values for each new band
     new_refl = np.zeros((old_refl.shape[0], new_cwav.size))
@@ -83,7 +85,7 @@ def spectral_resampling(new_cwav, new_fwhm, old_cwav, old_fwhm, old_refl,
 
         if np.all(w1 < band_overlap_threshold * norm(cwav, std).pdf(cwav)) and fill_insufficient_overlap is not None:
             new_refl[:, band] = fill_insufficient_overlap
-        elif np.all(w1 < band_overlap_threshold * norm(cwav, std).pdf(cwav)) and not fill_insufficient_overlap is not None:
+        elif np.all(w1 < band_overlap_threshold * norm(cwav, std).pdf(cwav)) and fill_insufficient_overlap is None:
             if raise_insufficient_overlap:
                 raise ValueError('{}insufficient overlap between new band (cwav={}, fwhm={}) and old bands'.format(error_prefix, cwav, fwhm))
             else:
@@ -159,7 +161,7 @@ def bandclust(spectra, wavelengths, bandwidths,
 
     def mutual_information(x, y):
 
-        # determine the optimal number of bins for MI estimation using the Freedman-Diaconis rule
+        # determine the optimal number of bins for MI error_matrix using the Freedman-Diaconis rule
         if nbins is None:
 
             n = x.size

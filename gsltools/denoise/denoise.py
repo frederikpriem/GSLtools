@@ -1,13 +1,11 @@
 import numpy as np
 import copy
 from tqdm import tqdm
-from gsltools.distance import sid_sam
 from scipy.stats import norm
-import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 
 """
-This module handles denoising of imagery.
+This module handles spectral and spatial denoising/smoothing of image and library data.
 """
 
 
@@ -57,8 +55,7 @@ def hysime(image):
 
     """
     HYSIME determines the optimal dimensionality of an image subspace formed by its eigenvectors. It is a completely
-    unsupervised algorithm, proposed by Bioucas-Dias & Nascimento (2008). It draws on the noise estimation defined
-    above.
+    unsupervised algorithm, proposed by Bioucas-Dias & Nascimento (2008). It draws on signal_noise_decomposition.
     """
 
     if len(image.shape) > 3 or len(image.shape) < 2:
@@ -120,7 +117,7 @@ def spectral_smoothing_gaussian(spectra, wavelengths, std=0.01):
     spectra_smooth = copy.deepcopy(spectra)
     n_bands = spectra.shape[1]
 
-    for band in tqdm(range(n_bands)):
+    for band in range(n_bands):
 
         wav = wavelengths[band]
         w = norm(wav, std).pdf(wavelengths)
@@ -131,10 +128,18 @@ def spectral_smoothing_gaussian(spectra, wavelengths, std=0.01):
     return spectra_smooth
 
 
-def iterative_adaptive_smoothing(image,
-                                 iterations=5,
-                                 distance_measure=sid_sam,
-                                 distance_threshold=0.000001):
+def gaussian_noise(spectra, snr_db,
+                   noise_seed=0):
+
+    np.random.seed(noise_seed)
+    noise = np.random.randn(*spectra.shape)
+    noise *= spectra / 10 ** (snr_db / 10)
+
+    return noise
+
+
+def iterative_adaptive_smoothing(image, distance_measure, distance_threshold,
+                                 iterations=5):
 
     """
     performs spatially adaptive smoothing on an image over several iterations

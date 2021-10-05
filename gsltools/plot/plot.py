@@ -6,7 +6,7 @@ import copy
 
 
 """
-This module contains tools that help to visualize imagery, spectral libraries and their overlap in feature space.
+This module handles the visualization of imagery, spectral libraries and their overlap in image feature space.
 """
 
 
@@ -64,22 +64,21 @@ def plot_spectra(spectra, wavelengths,
                  figsize=None):
 
     n_spectra = spectra.shape[0]
-    ymax = spectra.max(axis=None)
 
     if not ax:
         f = plt.figure(figsize=figsize)
         ax = plt.gca()
 
-    if not colors:
+    if colors is None:
         colors = [None] * n_spectra
 
-    if not linestyles:
+    if linestyles is None:
         linestyles = ['-'] * n_spectra
 
     if labels is not None:
 
         # only retain the first occurrence of each label, set the rest to None
-        # this is done to avoid redundant labels in the legend
+        # this avoids redundant labels in the legend
         unique_labels = np.unique(labels)
 
         for l, label in enumerate(labels):
@@ -88,6 +87,51 @@ def plot_spectra(spectra, wavelengths,
                 unique_labels = unique_labels[unique_labels != label]
             else:
                 labels[l] = None
+
+    # don't plot unmeasured intervals of the spectrum by introducing nan values in the spectra and/or wavelengths
+    if unmeasured_intervals is not None:
+
+        if unmeasured_intervals == 'auto':
+
+            diff = np.diff(wavelengths)
+            iqr = np.quantile(diff, 0.75) - np.quantile(diff, 0.25)
+            ind = np.where(diff > diff.mean() + 1.5 * iqr)[0]
+            ext = 0
+
+            for i in ind:
+
+                spectra = np.concatenate((spectra[:, :i + 1 + ext],
+                                          np.array([np.nan] * spectra.shape[0]).reshape(-1, 1),
+                                          spectra[:, i + 1 + ext:]),
+                                         axis=1)
+                wavelengths = np.concatenate((wavelengths[:i + 1 + ext],
+                                              np.array([np.nan]),
+                                              wavelengths[i + 1 + ext:]))
+                ext += 1
+
+        else:
+
+            for ui in unmeasured_intervals:
+
+                xmin = ui[0]
+                xmax = ui[1]
+                con = np.logical_and(wavelengths > xmin, wavelengths < xmax)
+
+                if np.any(con):
+
+                    ind = np.where(con)[0]
+                    wavelengths[ind] = np.nan
+
+                elif np.any(wavelengths < xmin) and np.any(wavelengths > xmax):
+
+                    ind = np.where(wavelengths < xmin)[0][-1]
+                    spectra = np.concatenate((spectra[:, :ind + 1],
+                                              np.array([np.nan] * spectra.shape[0]).reshape(-1, 1),
+                                              spectra[:, ind + 1:]),
+                                             axis=0)
+                    wavelengths = np.concatenate((wavelengths[:ind + 1],
+                                                  np.array([np.nan]),
+                                                  wavelengths[ind + 1:]))
 
     # plot the spectra with correct color and label
     for s, spectrum in enumerate(spectra):
@@ -102,23 +146,6 @@ def plot_spectra(spectra, wavelengths,
                 linewidth=linewidth,
                 label=label,
                 zorder=0)
-
-    if unmeasured_intervals is not None:
-
-        if unmeasured_intervals == 'auto':
-
-            diff = np.diff(wavelengths)
-            iqr = np.quantile(diff, 0.75) - np.quantile(diff, 0.25)
-            outind = np.where(diff > diff.mean() + 1.5 * iqr)[0]
-            unmeasured_intervals = [[wavelengths[o], wavelengths[o + 1]] for o in outind]
-
-        for ui in unmeasured_intervals:
-
-            xmin = ui[0]
-            xmax = ui[1]
-            x_ws = [xmin, xmax, xmax, xmin, xmin]
-            y_ws = [spectra.min(axis=None), spectra.min(axis=None), spectra.max(axis=None), spectra.max(axis=None), spectra.min(axis=None)]
-            ax.fill(x_ws, y_ws, 'white', zorder=1)
 
     if show_axes:
 

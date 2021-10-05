@@ -314,9 +314,31 @@ def is_one_of(o, values,
 
 
 def is_not_one_of(o, values,
+                  multivalued=False,
+                  encapsulators='[]',
+                  separator=',',
                   object_name='object'):
 
     if o is not None:
+
+        if multivalued:
+
+            new_o = []
+
+            if isinstance(o, str):
+                if o[0] == encapsulators[0] and o[-1] == encapsulators[1]:
+                    new_o += o[1:-1].split(separator)
+                else:
+                    new_o.append(o)
+
+            else:
+                for elem in o:
+                    if elem[0] == encapsulators[0] and elem[-1] == encapsulators[1]:
+                        new_o += elem[1:-1].split(separator)
+                    else:
+                        new_o.append(elem)
+
+            o = new_o
 
         if np.any(np.isin(np.array(o), values)):
             raise Exception('{} must not be one of the following: {}'.format(object_name, values))
@@ -352,7 +374,7 @@ def check_hierarchy(hierarchy, dtype,
                       dimensions=2,
                       dtype=dtype)
 
-        hierarchy = np.array(hierarchy)
+        hierarchy = np.array(hierarchy, dtype=dtype)
 
         # check if hierarchy rows and columns are unique
         uni, h_cnt = np.unique(hierarchy,
@@ -505,16 +527,41 @@ def check_metadata(metadata, metadata_model, error_prefix):
                 is_of_dtype(entry, attribute._dtype,
                             object_name=object_name)
 
-                if attribute._multivalued == 0:
-                    is_single_value(entry,
-                                    object_name=object_name)
+                is_single_value(entry,
+                                object_name=object_name)
 
-                if attribute._multivalued > 0:
-                    is_array_like(entry,
-                                  repetition_allowed=attribute._repetition_allowed,
-                                  object_name=object_name)
+            # check the remaining constraints on the attribute value domain
+            if attribute._l:
+                if not np.all(np.array(entry, dtype=attribute._dtype) < attribute._l):
+                    raise Exception('{} must be less than {}'.format(object_name, attribute._l))
 
-            # _check the remaining constraints on the attribute value domain
+            if attribute._le:
+                if not np.all(np.array(entry, dtype=attribute._dtype) <= attribute._le):
+                    raise Exception('{} must be less than or equal to {}'.format(object_name, attribute._le))
+
+            if attribute._g:
+                if not np.all(np.array(entry, dtype=attribute._dtype) > attribute._g):
+                    raise Exception('{} must be greater than {}'.format(object_name, attribute._g))
+
+            if attribute._ge:
+                if not np.all(np.array(entry, dtype=attribute._dtype) >= attribute._ge):
+                    raise Exception('{} must be greater than or equal to {}'.format(object_name, attribute._ge))
+
+            # account for possibly multivalued string attributes
+            if attribute._multivalued:
+
+                parsed = []
+
+                for e in entry:
+
+                    if len(e) >= 2:
+                        if e[0] == attribute._encapsulators[0] and e[-1] == attribute._encapsulators[1]:
+                            parsed += [part.strip() for part in e[1:-1].split(attribute._separator)]
+                    else:
+                        parsed.append(e)
+
+                entry = copy.deepcopy(parsed)
+
             if attribute._value_domain is not None:
                 is_one_of(entry, attribute._value_domain,
                           object_name=object_name)
@@ -526,14 +573,6 @@ def check_metadata(metadata, metadata_model, error_prefix):
             if attribute._regex:
                 check_regex(entry, attribute._regex,
                             object_name=object_name)
-
-            if attribute._max_value:
-                if not np.all(np.array(entry, dtype=attribute._dtype) <= attribute._max_value):
-                    raise Exception('{} must be less than or equal to {}'.format(object_name, attribute._max_value))
-
-            if attribute._min_value:
-                if not np.all(np.array(entry, dtype=attribute._dtype) >= attribute._min_value):
-                    raise Exception('{} must be greater than or equal to {}'.format(object_name, attribute._min_value))
 
     return metadata
 
@@ -582,7 +621,7 @@ def compare_metadata_models(mdm1, mdm2):
         out_code = 1
     else:
         mda_attributes = ['_aid', '_atype', '_dtype', '_description', '_mandatory', '_value_domain', '_value_hierarchy',
-                         '_regex', '_max_value', '_min_value', '_nodata_value', '_multivalued', '_encapsulators',
+                         '_regex', '_l', '_le', '_g', '_ge', '_nodata_value', '_multivalued', '_encapsulators',
                          '_separator', '_repetition_allowed', '_protected']
 
         for aid in attribute_ids1:

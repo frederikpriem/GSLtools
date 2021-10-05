@@ -1,41 +1,40 @@
 import numpy as np
 import copy
-from gsltools.distance import *
-import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from scipy.ndimage import convolve
+from scipy.spatial.distance import pdist, cdist, squareform
+
+from gsltools.denoise import gaussian_noise
 
 """
-This module handles automated endmember extract from imagery.
+This module handles the automated extraction of endmember spectra from imagery.
 """
 
 
-def endmember_extraction(image,
-                         normalize_image=False,
-                         return_candidate_indices=False,
-                         distance_measure=auc_sam,
-                         distance_threshold_filter=0.0001,
-                         distance_threshold_redundancy=0.0005,
-                         filter_type='Moore',
-                         nodata=None):
+def iterative_spectral_distancing(image, distance_measure, distance_threshold_purity, distance_threshold_redundancy,
+                                  normalize_image=False,
+                                  return_candidate_indices=False,
+                                  nodata=None):
 
     """
-    extracts EM spectra from image in two steps:
-    1. Find pure patches in the image using neighbourhood analysis. The central pixel is compared with all its
-     neighbouring pixels. If all pixels are similar, the central pixel in these neighbourhood becomes a candidate EM.
-    2. Iteratively retain candidate EM's located farthest away from the center of mass of all candidates. Remove spectra
-     located near retained EM at the end of each iteration. Repeat until all candidates are either retained or removed.
-    :param image: 3D-array of shape (rows, cols, bands)
-    :param normalize_image: bool, whether to brightness normalize each pixel in the image
-    :param return_candidate_indices: bool, whether to return indices of all candidate EM
-    :param distance_measure: object, distance measure used (see module 'spectral distance' for possible measures)
-    :param distance_threshold_filter: float, distance threshold used to find pure patches
-    :param distance_threshold_redundancy: float, distance threshold used to assess redundancy among candidates
-    :param filter_type: type of neighbourhood used to perform spatial filter, either 'Neumann' or 'Moore'
-    :param normalize_distance: bool, whether to normalize distances
-    :param nodata: float, no data value
-    :return:
-        em: endmember spectra (2D-array, float, shape (m endmembers, b bands))
-        em_rows: endmember rows (1D-array, size m, int),
-        em_cols: endmember columns (1D-array, size m, int)
+    Iterative Spectral Distancing
+
+    Extracts endmember spectra from an image.
+
+    Args:
+        image: 3D array of shape (rows, cols, bands B) and type float
+        distance_measure: function object, distance measure used, see submodule 'distance' for examples possible
+            measures
+        distance_threshold_purity: float, distance threshold used to find spectrally pure patches
+        distance_threshold_redundancy: float, distance threshold used to assess redundancy among candidates
+        normalize_image: bool, whether to brightness normalize each pixel in the image
+        return_candidate_indices: bool, whether to return indices of all candidate EM
+        nodata: float, no data value to exclude pixels as candidate endmembers
+
+    Returns:
+        em: 2D array of shape (endmembers E, B) and type float, the endmember spectra
+        em_rows: 1D array of size E and type int, row indices of the endmember spectra
+        em_cols: 1D array of size E and type int, column indices of the endmember spectra
     """
 
     image_orig = copy.deepcopy(image)
@@ -67,12 +66,7 @@ def endmember_extraction(image,
         for h in shifts:
 
             con1 = v != 0 or h != 0
-
-            # apply the chosen neighbourhood filter
-            if filter_type == 'Moore':
-                con2 = True
-            elif filter_type == 'Neumann':
-                con2 = np.abs(v) == 0 or np.abs(h) == 0
+            con2 = True
 
             if con1 and con2:
 
@@ -80,7 +74,7 @@ def endmember_extraction(image,
                 image_shift = image_shift[1:-1, 1:-1]
                 image_shift_array = image_shift.reshape(rows * cols, bands)
                 dist = distance_measure(image_array, image_shift_array).reshape(-1, 1)
-                check.append(dist < distance_threshold_filter)
+                check.append(dist < distance_threshold_purity)
 
     # if all neighbouring spectra are similar, retain the central pixel as a candidate
     # remove no data pixels from candidates if applicable
@@ -128,60 +122,69 @@ def endmember_extraction(image,
     return output
 
 
-def find_match(spectra, ref,
-               distance_measure=auc_sam,
-               distance_threshold=0.01,
-               retention='closest',
-               normalize_distance=True,
-               return_new=False,
-               return_weights=False
-               ):
+def synthetic_image(image, num_em,
+                    conv_footprint=None,
+                    clust_seed=None,
+                    noise_seed=None,
+                    snr_db=30,
+                    min_value=0,
+                    max_value=1
+                    ):
 
-    """
-    finds spectral match between set of spectra and reference library
-    :param spectra: 2D-array of floats with shape (n target spectra, b bands), target spectra to be matched
-    :param ref: 2D-array of floats with shape (r reference spectra, b bands), reference spectra
-    :param distance_measure: distance measure used to match spectra
-    :param distance_threshold: distance threshold used to determine (dis)similarity
-    :param retention: either 'closest' or 'all'. If 'closest' only the closest match is retained. If 'all', all
-    reference spectra located within the defined distance threshold are retained, and weights are defined for each match
-    in the reference library based on its proximity to the target spectrum.
-    :param normalize_distance: bool, whether to normalize distances
-    :param return_new: bool, whether to return indices of target spectra without match in the reference library
-    :param return_weights: bool, whether to return weights, only applicable if retention='all'
-    :return:
-        matched: indices of matched spectra (list of int),
-        match_ref: index/indices of reference spectrum/spectra matched to target spectrum (list of int or list of
-        1D-array of int), see retention
-    """
+    # define the default convolution footprint
+    if conv_footprint is None:
+        conv_footprint = [[0.2, 0.2, 0.2], [0.2, 1, 0.2], [0.2, 0.2, 0.2]]
 
-    matched = []
-    match_ref = []
-    new = []
-    weights = []
+    # reshape the image to a 2D array and cast it to float
+    image = image.astype(float)
+    shape = image.shape
+    image = image.reshape(shape[0] * shape[1], -1)
 
-    for s, spec in enumerate(spectra):
+    # fit the cluster on the image and construct the synthetic endmembers
+    kmeans = KMeans(n_clusters=num_em,
+                    random_state=clust_seed)
+    kmeans.fit(image)
+    synth_em = np.array(kmeans.cluster_centers_)
 
-        dist = distance_measure(spec, ref,
-                                norm=normalize_distance)
-        if np.all(dist >= distance_threshold):
-            new.append(s)
-        else:
-            matched.append(s)
-            if retention == 'closest':
-                match_ref.append(np.argmin(dist))
-            elif retention == 'all':
-                match_ref.append(np.where(dist < distance_threshold)[0])
-                w = dist[dist < distance_threshold]
-                w = distance_threshold - w
-                weights.append(w / w.sum())
+    # apply the cluster labels and corresponding synthetic endmembers to produce the synthetic image
+    cluster = kmeans.predict(image)
+    cluster = cluster.reshape(shape[0], shape[1], 1)
+    synth_image = synth_em[cluster, :]
+    synth_image = synth_image.reshape(shape)
 
-    output = (matched, match_ref)
-    if return_weights:
-        output = (matched, match_ref, weights)
-        if return_new:
-            output = (matched, match_ref, weights, new)
-    elif return_new:
-        output = (matched, match_ref, new)
+    # apply convolution on the synthetic image to simulate mixing on the edges between clusters
+    conv_footprint = np.array(conv_footprint)
+    conv_footprint /= conv_footprint.sum(axis=None)
+    footprint = np.expand_dims(conv_footprint, axis=2)
+    synth_image = convolve(synth_image, footprint)
 
-    return output
+    # add Gaussian noise with a specified SNR to the synthetic image to further enhance its realism
+    noise = gaussian_noise(synth_image, snr_db,
+                           noise_seed=noise_seed)
+    synth_image += noise
+
+    # cut off values out of range
+    if min_value:
+        synth_image[synth_image < min_value] = min_value
+    if max_value:
+        synth_image[synth_image > max_value] = max_value
+
+    return synth_image, synth_em
+
+
+def em_coverage(em_ref, em_pred, dist_meas):
+
+    dist_ap = cdist(em_ref, em_pred, dist_meas)
+    c = np.mean(dist_ap.min(axis=1))
+
+    return c
+
+
+def em_redundancy(em_pred, dist_meas):
+
+    dist_pp = pdist(em_pred, dist_meas)
+    dist_pp = squareform(dist_pp)
+    r = np.tril(dist_pp, -1)
+    r = r.mean()
+
+    return r

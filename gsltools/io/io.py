@@ -48,7 +48,7 @@ def read_envi_header(hdr,
     """
     reads ENVI header to dictionary
     :param hdr: str, path to header
-    :param format_iter: dictionary, used to cast specified metadata entries (key) to correct data types (value)
+    :param format_iter: dictionary, used to cast iterable metadata entries (key) to the desired data types (value)
     :return: metadata dictionary
     """
 
@@ -80,6 +80,17 @@ def read_envi_header(hdr,
         key = key.replace('=', '')
         key = key.strip()
 
+        # split up the metadata item if its multivalued, and clean up the separate values
+        if item[0] == '{' and item[-1] == '}':
+            item = item[1:-1]
+            item = item.split(',')
+            item = [i.strip() for i in item]
+
+        # reduce list to string if the item is description (for some reason descriptions are put between curly brackets
+        # in ENVI images/libraries, even though this is not a multivalued attribute)
+        if key == 'description' and isinstance(item, list):
+            item = item[0]
+
         # add to the metadata dictionary
         md_rev[key] = item
 
@@ -100,7 +111,7 @@ def read_envi_header(hdr,
     md['header offset'] = int(md['header offset'])
 
     # format iterables of form "{a, b, c, ...}"
-    # _check for the following common iterables
+    # check for the following common iterables
     # additional iterables can optionally be included
     common_iter = [
         ['map info', str],  # most items of map info are numbers
@@ -126,9 +137,6 @@ def read_envi_header(hdr,
 
             item = md[key]
             if not (item == 'None' or item == 'NaN'):
-                item = item[1:-1]
-                item = item.split(',')
-                item = [i.strip() for i in item]
                 item = [data_type(i) for i in item]
                 md[key] = np.array(item)
 

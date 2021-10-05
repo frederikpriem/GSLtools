@@ -8,6 +8,11 @@ from gsltools.io import read_envi_library, read_envi_header, save_envi_library, 
 from gsltools.resample import spectral_resampling
 
 
+"""
+This module contains the main classes and functionality corresponding to the Generic Spectral Library concept.
+"""
+
+
 class MetadataAttribute:
 
     def __init__(self, aid, atype, dtype,
@@ -16,10 +21,12 @@ class MetadataAttribute:
                  value_domain=None,
                  value_hierarchy=None,
                  regex=None,
-                 max_value=None,
-                 min_value=None,
+                 g=None,
+                 ge=None,
+                 l=None,
+                 le=None,
                  nodata_value=None,
-                 multivalued=0,
+                 multivalued=False,
                  encapsulators='[]',
                  separator=',',
                  repetition_allowed=True,
@@ -54,23 +61,23 @@ class MetadataAttribute:
                          object_name='regex')
             if regex:
                 dtype = str
-            check.is_of_dtype(max_value, dtype,
-                              object_name='max_value')
-            check.is_of_dtype(min_value, dtype,
-                              object_name='min_value')
+            check.is_of_dtype(l, dtype,
+                              object_name='l')
+            check.is_of_dtype(le, dtype,
+                              object_name='le')
+            check.is_of_dtype(g, dtype,
+                              object_name='g')
+            check.is_of_dtype(ge, dtype,
+                              object_name='ge')
             if not mandatory:
                 check.is_not_none(nodata_value,
                                   object_name='nodata_value')
             check.is_of_dtype(nodata_value, dtype,
                               object_name='nodata_value')
-            check.is_not_none(multivalued,
-                              object_name='multivalued')
-            check.is_one_of(multivalued, [0, 1, 2],
-                            object_name='multivalued')
-            if (atype == 's' or atype == 'b') and multivalued == 0:
-                multivalued = 1
-            if multivalued == 2:
-                dtype = str
+            check.is_bool(multivalued,
+                          object_name='multivalued')
+            if multivalued and (dtype is not str):
+                raise Exception('multivalued attributes must be strings')
             check.is_one_of(encapsulators, ['[]', '()', '{}', '<>'],
                             object_name='encapsulators')
             check.is_str(separator,
@@ -87,8 +94,10 @@ class MetadataAttribute:
         self._value_domain = value_domain
         self._value_hierarchy = value_hierarchy
         self._regex = regex
-        self._max_value = max_value
-        self._min_value = min_value
+        self._l = l
+        self._le = le
+        self._g = g
+        self._ge = ge
         self._nodata_value = nodata_value
         self._multivalued = multivalued
         self._encapsulators = encapsulators
@@ -108,8 +117,10 @@ class MetadataAttribute:
         txt += 'value domain = {}\n'.format(self._value_domain)
         txt += 'value hierarchy = {}\n'.format(self._value_hierarchy)
         txt += 'regular expression = {}\n'.format(self._regex)
-        txt += 'max value = {}\n'.format(self._max_value)
-        txt += 'min value = {}\n'.format(self._min_value)
+        txt += 'less than = {}\n'.format(self._l)
+        txt += 'less than or equal = {}\n'.format(self._le)
+        txt += 'greater than = {}\n'.format(self._g)
+        txt += 'greater than or equal = {}\n'.format(self._ge)
         txt += 'no data value = {}\n'.format(self._nodata_value)
         txt += 'multivalued = {}\n'.format(self._multivalued)
         txt += 'encapsulators = {}\n'.format(self._encapsulators)
@@ -131,7 +142,6 @@ class MetadataModel:
         lid = MetadataAttribute('lid', 'l', str,
                                 description='Library ID',
                                 mandatory=True,
-                                multivalued=0,
                                 _skip_checks=True)
         lid._protected = True
         self._mdm['lid'] = lid
@@ -139,8 +149,7 @@ class MetadataModel:
         spectra = MetadataAttribute('spectra', 'l', int,
                                     description='The number of spectra included in the library',
                                     mandatory=True,
-                                    min_value=1,
-                                    multivalued=0,
+                                    ge=1,
                                     _skip_checks=True)
         spectra._protected = True
         self._mdm['spectra'] = spectra
@@ -148,8 +157,7 @@ class MetadataModel:
         bands = MetadataAttribute('bands', 'l', int,
                                   description='The number of spectral bands included in the library',
                                   mandatory=True,
-                                  min_value=1,
-                                  multivalued=0,
+                                  ge=1,
                                   _skip_checks=True)
         bands._protected = True
         self._mdm['bands'] = bands
@@ -157,8 +165,7 @@ class MetadataModel:
         wavelength_scale_factor = MetadataAttribute('wavelength scale factor', 'l', float,
                                                     description='Scale factor needed to convert the library wavelength unit to the SI unit (meter)',
                                                     mandatory=True,
-                                                    min_value=np.finfo(float).tiny,
-                                                    multivalued=0,
+                                                    ge=np.finfo(float).tiny,
                                                     _skip_checks=True)
         wavelength_scale_factor._protected = True
         self._mdm['wavelength scale factor'] = wavelength_scale_factor
@@ -167,8 +174,7 @@ class MetadataModel:
                                        description='Central wavelengths of the library spectral bands, expressed in the unit'
                                                    'corresponding to the specified wavelength scale factor, e.g. micrometer -> 10E-6',
                                        mandatory=True,
-                                       min_value=np.finfo(float).tiny,
-                                       multivalued=1,
+                                       g=0,
                                        repetition_allowed=False,
                                        _skip_checks=True
                                        )
@@ -179,7 +185,6 @@ class MetadataModel:
         sid = MetadataAttribute('sid', 's', str,
                                 description='Spectrum ID',
                                 mandatory=False,
-                                multivalued=1,
                                 repetition_allowed=False,
                                 _skip_checks=True)
         sid._protected = True
@@ -188,7 +193,6 @@ class MetadataModel:
         bid = MetadataAttribute('bid', 'b', str,
                                 description='Spectral band ID',
                                 mandatory=False,
-                                multivalued=1,
                                 repetition_allowed=False,
                                 _skip_checks=True)
         bid._protected = True
@@ -198,7 +202,6 @@ class MetadataModel:
                                                     description='Boolean indicating whether the library wavelength unit is inverse,'
                                                                 'which is the case e.g. with wave numbers',
                                                     mandatory=False,
-                                                    multivalued=0,
                                                     _skip_checks=True)
         wavelength_inverse_unit._protected = True
         self._mdm['wavelength inverse unit'] = wavelength_inverse_unit
@@ -207,8 +210,7 @@ class MetadataModel:
                                  description='Full Width at Half Maximum (bandwidth) of the library spectral bands, expressed in the unit'
                                              'corresponding to the specified wavelength scale factor, e.g. micrometer -> 10E-6',
                                  mandatory=False,
-                                 min_value=np.finfo(float).tiny,
-                                 multivalued=1,
+                                 g=0,
                                  repetition_allowed=True,
                                  _skip_checks=True)
         fwhm._protected = True
@@ -217,8 +219,7 @@ class MetadataModel:
         reflectance_scale_factor = MetadataAttribute('reflectance scale factor', 'l', float,
                                                      description='Scale factor needed to convert library reflectance values to the [0, 1] range',
                                                      mandatory=False,
-                                                     min_value=np.finfo(float).tiny,
-                                                     multivalued=0,
+                                                     g=0,
                                                      _skip_checks=True)
         reflectance_scale_factor._protected = True
         self._mdm['reflectance scale factor'] = reflectance_scale_factor
@@ -226,7 +227,6 @@ class MetadataModel:
         class_label = MetadataAttribute('class label', 's', str,
                                         description='Class label assigned to each spectrum',
                                         mandatory=False,
-                                        multivalued=1,
                                         repetition_allowed=True,
                                         _skip_checks=True)
         class_label._protected = True
@@ -235,7 +235,6 @@ class MetadataModel:
         l_filter = MetadataAttribute('l-filter', 'l', bool,
                                      description='Library filter (False = do not use)',
                                      mandatory=False,
-                                     multivalued=0,
                                      _skip_checks=True)
         l_filter._protected = True
         self._mdm['l-filter'] = l_filter
@@ -243,7 +242,6 @@ class MetadataModel:
         s_filter = MetadataAttribute('s-filter', 's', bool,
                                      description='Spectrum filter (False = do not use)',
                                      mandatory=False,
-                                     multivalued=1,
                                      repetition_allowed=True,
                                      _skip_checks=True)
         s_filter._protected = True
@@ -252,7 +250,6 @@ class MetadataModel:
         b_filter = MetadataAttribute('b-filter', 'b', bool,
                                      description='Spectral band filter (False = do not use)',
                                      mandatory=False,
-                                     multivalued=1,
                                      repetition_allowed=True,
                                      _skip_checks=True)
         b_filter._protected = True
@@ -420,12 +417,15 @@ class SpectralLibrary:
                       values=self._metadata_model.get_mandatory_attribute_ids(),
                       object_name='envi_attribute_map')
 
+        format_iter = {eam[0]: self.get_metadata_model().get_attribute(eam[1])._dtype for eam in envi_attribute_map.items()}
+
         spectra, metadata = read_envi_library(path)
         metadata_correct = dict()
 
         for item in envi_attribute_map.items():
 
-            metadata_correct[item[1]] = copy.deepcopy(metadata[item[0]])
+            if item[0] in list(metadata.keys()):
+                metadata_correct[item[1]] = copy.deepcopy(metadata[item[0]])
 
         self.load(spectra, metadata_correct,
                   error_prefix=path + ': ')
@@ -540,7 +540,7 @@ class SpectralLibrary:
 
         spectra = self.get_spectra(s_filter=s_filter,
                                    b_filter=b_filter)
-        spectra *= self._metadata['reflectance scale factor']
+        spectra *= float(self._metadata['reflectance scale factor'])
 
         # get the library's spectral bands wavelength and FWHM in the specified unit
         # first convert them to the SI unit
@@ -558,7 +558,12 @@ class SpectralLibrary:
             wl = wl ** -1
             fl = fl ** -1
 
-        # address nodata values
+        # apply the band filter
+        if b_filter is not None:
+            wl = wl[b_filter]
+            fl = fl[b_filter]
+
+        # address no-data values in the spectra
         spectra[np.isnan(spectra)] = -1
         spectra[spectra > 1] = -1
         spectra[spectra < 0] = np.nan
@@ -779,7 +784,7 @@ class SpectralLibraryCollection:
             self._update_indices(lid=lid)
         elif lid in lid_list and not overwrite:
             raise Exception('Spectral library with lid {} is already present in the spectral library collection. '
-                            'Set the keyword argument overwrite to True to replace the existing library.'.format(lid))
+                            'Make overwrite True to replace the existing library.'.format(lid))
 
     def add_library_from_envi(self, path, envi_attribute_map,
                               overwrite=False):
@@ -934,7 +939,7 @@ class SpectralLibraryCollection:
             b_filter = self.get_library(lid).get_metadata()['b-filter']
             self._b_index.loc[con, 'b-filter'] = b_filter
 
-    def set_class_labels(self, dataframe):
+    def set_class_labels_with_dataframe(self, dataframe):
 
         check.is_not_none(dataframe,
                           object_name='dataframe')
@@ -959,6 +964,8 @@ class SpectralLibraryCollection:
                            inplace=True)
 
     def set_class_labels_with_attribute(self, aid,
+                                        include_multivalued=False,
+                                        retain_multivalue_ind=0,
                                         hierarchy_level=0):
 
         check.is_not_none(aid,
@@ -966,6 +973,16 @@ class SpectralLibraryCollection:
         check.is_str(aid,
                      object_name='aid')
         check.is_one_of(aid, self._metadata_model.get_attribute_ids())
+        check.is_bool(include_multivalued,
+                      object_name='multi_valued')
+        check.is_int(retain_multivalue_ind,
+                     ge=-1,
+                     object_name='retain_multivalued')
+        check.is_int(hierarchy_level,
+                     object_name='hierarchy_level',
+                     ge=-1)
+        if hierarchy_level is None:
+            hierarchy_level = 0
 
         attribute = self._metadata_model.get_attribute(aid)
         if not attribute._atype == 's':
@@ -973,12 +990,27 @@ class SpectralLibraryCollection:
 
         self._s_index['class label'] = self._s_index[aid].values
 
+        # check how a multivalued attribute must be handled
+        if attribute._multivalued:
+
+            ind = np.where(self._s_index['class label'].str.startswith(attribute._encapsulators[0]).values)[0]
+            if not include_multivalued:
+                self._s_index.loc[self._s_index.index[ind], 'class label'] = ''
+            else:
+
+                for i in ind:
+
+                    value = self._s_index.loc[self._s_index.index[i], 'class label']
+                    values = value[1:-1].split(attribute._separator)
+                    if retain_multivalue_ind > len(values) - 1:
+                        value = values[-1]
+                    else:
+                        value = values[retain_multivalue_ind]
+                    self._s_index.loc[self._s_index.index[i], 'class label'] = value
+
         # if the attribute is hierarchical, relabel to the specified level
         if attribute._value_hierarchy is not None:
 
-            check.is_int(hierarchy_level,
-                         object_name='hierarchy_level',
-                         ge=-1)
             hierarchy = np.array(attribute._value_hierarchy)
 
             if hierarchy_level == -1:
@@ -993,7 +1025,7 @@ class SpectralLibraryCollection:
 
             for clu in class_labels_unique:
 
-                con = self._s_index['class label'] == clu
+                con = self._s_index['class label'].values == clu
 
                 if clu not in level_labels:
                     rows, cols = np.where(hierarchy == clu)
@@ -1003,7 +1035,7 @@ class SpectralLibraryCollection:
                         new_label = hierarchy[row, hierarchy_level]
                         self._s_index.loc[con, 'class label'] = new_label.encode('utf-8').decode()
                     else:
-                        self._s_index.loc[con, 'class label'] = np.nan
+                        self._s_index.loc[con, 'class label'] = ''
 
     def reset_class_labels(self):
 
@@ -1025,25 +1057,31 @@ class SpectralLibraryCollection:
                         band_overlap_threshold=0.5,
                         raise_insufficient_overlap=False,
                         fill_insufficient_overlap=None,
-                        drop_unlabeled=False,
                         fill_unlabeled=None,
                         use_filters=False,
+                        use_l_filter=False,
+                        use_s_filter=False,
+                        use_b_filter=False,
                         source_lid_in_sid=True,
                         id_separator='_',
                         drop_optional_spectrum_attributes=False):
 
         if len(self._slc) == 0:
             raise Exception('The spectral library collection must contain at least one library to perform this'
-                             'operation')
+                            'operation')
 
         check.is_not_none(new_lid,
                           object_name='new_lid')
-        check.is_bool(drop_unlabeled,
-                      object_name='drop_unlabeled')
         check.is_str(fill_unlabeled,
                      object_name='fill_unlabeled')
         check.is_bool(use_filters,
                       object_name='use_filters')
+        check.is_bool(use_l_filter,
+                      object_name='use_l_filters')
+        check.is_bool(use_s_filter,
+                      object_name='use_s_filter')
+        check.is_bool(use_b_filter,
+                      object_name='use_b_filter')
         check.is_bool(source_lid_in_sid,
                       object_name='source_lid_in_sid')
         check.is_str(id_separator,
@@ -1051,6 +1089,11 @@ class SpectralLibraryCollection:
                      object_name='id_separator')
         check.is_bool(drop_optional_spectrum_attributes,
                       object_name='drop_optional_spectrum_attributes')
+
+        if use_filters:
+            use_l_filter = True
+            use_s_filter = True
+            use_b_filter = True
 
         if fwhm is None:
             diff = np.diff(wavelength)
@@ -1066,7 +1109,7 @@ class SpectralLibraryCollection:
 
             # apply the library filter
             stop = False
-            if use_filters:
+            if use_l_filter:
                 con = self._l_index['lid'].values == lid
                 filter_value = self._l_index.loc[con, 'l-filter'].values[0]
                 if not filter_value:
@@ -1087,27 +1130,29 @@ class SpectralLibraryCollection:
                 b_index = b_index.loc[b_con]
 
                 # get the s- and b-filter
-                if use_filters:
+                if use_s_filter:
                     s_filter = s_index['s-filter'].values
-                    b_filter = b_index['b-filter'].values
                 else:
                     s_filter = np.array([True for s in range(metadata['spectra'])])
+
+                if use_b_filter:
+                    b_filter = b_index['b-filter'].values
+                else:
                     b_filter = np.array([True for b in range(metadata['bands'])])
 
-                # filter or fill out unlabelled spectra
-                if drop_unlabeled:
-                    class_labels = s_index['class label'].values.astype(str)
-                    ind = np.where(class_labels == 'nan')[0]
-                    s_filter[ind] = False
+                # filter or fill unlabelled spectra
                 if fill_unlabeled is not None:
                     class_labels = s_index['class label'].values.astype(str)
-                    ind = np.where(class_labels == 'nan')[0]
+                    ind = np.where(class_labels == '')[0]
                     s_index.loc[s_index.index[ind], 'class label'] = fill_unlabeled
 
-                # _check if there are still spectra and bands left after applying the filters
-                if (np.sum(s_filter) > 0) and (np.sum(b_filter) > 0):
+                # check if there are still spectra and bands left after applying the filters
+                if not ((np.sum(s_filter) > 0) and (np.sum(b_filter) > 0)):
+                    raise Exception('Merged library must have 1 or more bands and spectra')
+                else:
 
                     # get the resampled spectra
+                    error_prefix = lid + ': '
                     resampled_spectra = library.get_resampled_spectra(
                         wavelength, wavelength_scale_factor,
                         fwhm=fwhm,
@@ -1118,10 +1163,13 @@ class SpectralLibraryCollection:
                         raise_insufficient_overlap=raise_insufficient_overlap,
                         fill_insufficient_overlap=fill_insufficient_overlap,
                         s_filter=s_filter,
-                        b_filter=b_filter)
+                        b_filter=b_filter,
+                        error_prefix=error_prefix)
 
-                    # _check if there are no-data values in the resampled spectra, drop the library if there are
-                    if not np.any(np.isnan(resampled_spectra), axis=None):
+                    # check for no-data values in the resampled spectra, drop the library if there are
+                    if np.any(np.isnan(resampled_spectra), axis=None):
+                        print('WARNING: Source library with lid = {} dropped from merged library due to insufficient overlap with target band set definition'.format(lid))
+                    else:
 
                         # add the resampled spectra to the collections
                         spectra_coll.append(resampled_spectra)

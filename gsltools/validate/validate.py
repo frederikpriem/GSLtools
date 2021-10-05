@@ -8,13 +8,66 @@ This module provides functions that allow accuracy assessment of produced map pr
 """
 
 
-def kappa_coefficient(est, ref, labels=None):
+def overall_accuracy(est, ref,
+                     weights_est=None,
+                     weights_ref=None,
+                     labels=None,
+                     return_error_matrix=False):
+
+    """
+    Overall accuracy
+
+    Estimates overall accuracy and its standard error, based on the given sample of estimated and reference labels.
+
+
+    Args:
+
+        est: 1D-array of type int or str, the estimated class labels
+
+        ref: 1D-array of type int or str, the reference class labels
+
+        FINISH REST OF DOC!
+
+
+    Returns:
+
+        oa: float, overall accuracy
+    """
+
+    # calculate the confusion matrix
+    cm = confusion_matrix(ref, est, labels=labels)
+    cm = cm.T  # transpose confusion matrix so that rows = estimates and columns = reference
+    cm = cm.astype(float)
+
+    # apply weights and convert error matrix to proportions
+    p = None
+
+    if weights_est is not None:
+        p = cm * weights_est.reshape(-1, -1)
+
+    if weights_ref is not None:
+        p = cm * weights_ref.reshape(1, -1)
+
+    if (weights_est is None) and (weights_ref is None):
+        p = cm / cm.sum(axis=None)
+
+    # calculate overall accuracy
+    oa = np.diag(p).sum() / p.sum(axis=None)
+
+    if not return_error_matrix:
+        return oa
+    else:
+        return oa, p
+
+
+def kappa_coefficient(est, ref,
+                      labels=None):
 
     """
     Computes overall kappa coefficient based on estimated and reference set of class labels.
     :param est: 1D-array of int or str, estimated class labels
     :param ref: 1D-array of int or str, reference class labels
-    :param labels: iterable of int or str, subset of classes to use to calculate kappa
+    :param labels: iterable of int or str, class labels used to index the error matrix
     :return:
         kappa: float, kappa coefficient
         var: float, estimated variance of kappa coefficient

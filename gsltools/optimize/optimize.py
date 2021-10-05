@@ -1,9 +1,9 @@
 import copy
 import numpy as np
+import multiprocessing as mp
 from tqdm import tqdm
-from gsltools.distance import *
-from gsltools.validate import kappa_coefficient
-from gsltools.denoise import hysime
+from gsltools.validate import kappa_coefficient, overall_accuracy
+from gsltools.denoise import hysime, gaussian_noise
 from scipy.spatial.distance import pdist, squareform
 from itertools import combinations
 from sklearn.preprocessing import StandardScaler
@@ -11,76 +11,163 @@ from sklearn.decomposition import PCA
 
 
 """
-This module addresses library optimize.
+This module handles library optimization.
 """
 
 
-def comprehensive(spectra,
-                  distance_measure=auc_sam,
-                  distance_threshold=0.1,
-                  return_indices=False):
+def iterative_spectral_distancing(spectra, labels, distance_measure, distance_threshold,
+                                  return_indices=False):
 
     """
+    Iterative Spectral Distancing optimization
+
     Optimizes a library with the same approach used in the second step of 'endmember extract' (see documentation).
-    :param spectra: 2D-array of floats with shape (n spectra, b bands)
-    :param distance_measure: object, distance measure used
-    :param distance_threshold: float, distance threshold used (see 'endmember extract')
-    :param return_indices: bool, False by default, whether to return the indices of retained spectra
-    :return: spectra: 2D-array of floats with shape (r retained spectra, b bands)
+
+    Args:
+        spectra: 2D-array of floats with shape (spectra, bands)
+        distance_measure: object, distance measure used
+        distance_threshold: float, distance threshold used (see 'endmember extract')
+        return_indices: bool, False by default, whether to return the indices of retained spectra
+
+    Returns:
+        spectra: 2D-array of shape (r retained spectra, b bands)
     """
 
-    center = spectra.mean(axis=0)
-    dist_center = distance_measure(spectra, center)
-    loc = np.arange(dist_center.size)
-    retained_spectra = []
+    unique_labels = np.unique(labels)
+    ret_loc = []
+
+    for label in unique_labels:
+
+        ind_label = np.where(labels == label)[0]
+        spectra_label = copy.deepcopy(spectra[ind_label, :])
+        center = spectra_label.mean(axis=0)
+        dist_center = distance_measure(spectra_label, center)
+
+        while True:
+
+            # stop when all library spectra are either retained or removed
+            if spectra_label.shape[0] == 0:
+                break
+
+            # retain the spectrum located furthest away from the center
+            ind = np.argmax(dist_center)
+            ret = copy.deepcopy(spectra_label[ind, :])
+            ret_loc.append(ind_label[ind])
+
+            # remove the retained spectrum
+            spectra_label = np.delete(spectra_label, ind, axis=0)
+            ind_label = np.delete(ind_label, ind)
+            dist_center = np.delete(dist_center, ind)
+
+            # stop when all library spectra are either retained or removed
+            if spectra_label.shape[0] == 0:
+                break
+
+            # Remove similar spectra from the library to avoid redundancy
+            dist = distance_measure(ret, spectra_label)
+            del_ind = np.where(dist < distance_threshold)[0]
+
+            if del_ind.size > 0:
+
+                spectra_label = np.delete(spectra_label, del_ind, 0)
+                ind_label = np.delete(ind_label, del_ind)
+                dist_center = np.delete(dist_center, del_ind)
+
+    ret_loc = np.array(ret_loc)
+    spectra = spectra[ret_loc, :]
+    labels = labels[ret_loc]
+
+    output = (spectra, labels)
+
+    if return_indices:
+
+        output = (spectra, labels, ret_loc)
+
+    return output
+
+
+def iterative_spectral_distancing_image(image, spectra, distance_measure, distance_threshold_image, distance_threshold_spectra,
+                                        return_indices=False):
+
+    if len(image.shape) > 3 or len(image.shape) < 2:
+        err_msg = """image must either be a 2D array of shape (spectra, bands)
+        or a 3D array of shape (rows, columns, bands)"""
+        raise ValueError(err_msg)
+
+    if len(image.shape) == 3:
+        rows, cols, bands = image.shape
+        image = image.reshape(rows * cols, bands)
+
+    if spectra.shape[1] != image.shape[1]:
+        raise ValueError('number of bands in library and image must be equal')
+
+    # brightness normalize the image and spectra
+    spectra_out = copy.deepcopy(spectra)
+    # image = copy.deepcopy(image)
+    # spectra = copy.deepcopy(spectra)
+    # image /= image.sum(axis=1).reshape(-1, 1)
+    # spectra /= spectra.sum(axis=1).reshape(-1, 1)
+
+    # start ISD
+    center = image.mean(axis=0)
+    dist_center = distance_measure(image, center)
+    loc = np.arange(spectra.shape[0])
     ret_loc = []
 
     while True:
 
-        # stop when all library spectra are either retained or removed
-        if spectra.shape[0] == 0:
+        # stop when all image spectra have been processed
+        if image.shape[0] == 0:
             break
 
-        # retain the spectrum located furthest away from the center
+        # get the image spectrum located farthest away from the image center
         ind = np.argmax(dist_center)
-        ret = copy.deepcopy(spectra[ind, :])
-        retained_spectra.append(ret.reshape(1, -1))
-        ret_loc.append(loc[ind])
+        test = copy.deepcopy(image[ind, :])
 
-        # remove the retained spectrum
-        spectra = np.delete(spectra, ind, axis=0)
-        loc = np.delete(loc, ind)
+        # check which target spectra are similar to the test image spectrum
+        dist = distance_measure(test, spectra)
+        ret_ind = np.where(dist < distance_threshold_spectra)[0]
+
+        if ret_ind.size > 0:
+
+            # retain similar spectra
+            ret_loc.append(loc[ret_ind])
+
+            # then remove the retained spectra from the pool of candidates
+            spectra = np.delete(spectra, ret_ind, 0)
+            loc = np.delete(loc, ret_ind)
+
+        # remove the test image spectrum
         dist_center = np.delete(dist_center, ind)
+        image = np.delete(image, ind, axis=0)
 
-        # stop when all library spectra are either retained or removed
-        if spectra.shape[0] == 0:
+        # check if there are still image spectra left at this point
+        if image.shape[0] == 0:
             break
 
-        # Remove similar spectra from the library to avoid redundancy
-        dist = distance_measure(ret, spectra)
-        del_ind = np.where(dist < distance_threshold)[0]
+        # remove all image spectra that are similar to the test image spectrum
+        dist = distance_measure(test, image)
+        del_ind = np.where(dist < distance_threshold_image)[0]
 
         if del_ind.size > 0:
 
-            spectra = np.delete(spectra, del_ind, 0)
-            loc = np.delete(loc, del_ind)
+            image = np.delete(image, del_ind, 0)
             dist_center = np.delete(dist_center, del_ind)
 
-    spectra = np.concatenate(retained_spectra, axis=0)
+    ret_loc = np.concatenate(ret_loc)
+    spectra = spectra_out[ret_loc]
 
     output = spectra
 
     if return_indices:
-        ret_loc = np.array(ret_loc)
+
         output = (spectra, ret_loc)
 
     return output
 
 
-def pairwise(spectra,
-             distance_measure=auc_sam,
-             distance_threshold=0.1,
-             return_indices=False):
+def pairwise_distancing(spectra, distance_measure, distance_threshold,
+                        return_indices=False):
 
     """
     This is a more generic implementation of EAR/MASA optimize (see corresponding papers). Any distance measure
@@ -297,174 +384,45 @@ def ies(spectra, labels, classifier,
     return output
 
 
-def music(image, spectra,
-          use_hysime=True):
+def _assess(pop, spectra, labels, estimator, spectra_test):
 
-    """
-    This function essentially calculates the Euclidean distance between library spectra and the plane formed by the
-    first n eigenvectors of the covariance matrix of an image. The technique is described in detail in 'MUSIC-CSR:
-    Hyperspectral Unmixing via Multiple Signal Classification and Collaborative Sparse Regression' by Marian-Daniel
-    Iordache et al. (2014).
+    fit = np.zeros(pop.shape[0])
 
-    Note that this is a simplified implementation of MUSIC that leaves out the HYSIME-based determination of the optimal
-    image subspace, i.e. the number of eigenvectors to use. The user can optionally specify how many of the first
-    eigenvector must be used to compute MUSIC.
+    for c, chromosome in enumerate(pop):
 
-    :param spectra: 2D array of shape (n_spectra, bands)
-    :param image: 3D array of shape (rows, columns, bands)
-    :param use_hysime: Boolean, use HYSIME to determine the optimal subspace
-    :return: 1D array containing MUSIC distances of each spectrum relative to the image subspace
-    """
+        ind = np.where(chromosome)[0]
 
-    if len(image.shape) > 3 or len(image.shape) < 2:
-        err_msg = """image must either be a 2D array of shape (spectra, bands)
-        or a 3D array of shape (rows, columns, bands)"""
-        raise ValueError(err_msg)
+        try:
+            mod = estimator.fit(spectra[ind, :], labels[ind])
+            est = mod.predict(spectra_test)
+            uni, counts = np.unique(labels, return_counts=True)
+            weights = 1. / counts
+            fit[c] = overall_accuracy(est, labels,
+                                      weights_ref=weights,
+                                      labels=uni)
+        except ValueError:
+            fit[c] = -1
 
-    if len(image.shape) == 3:
-        rows, cols, bands = image.shape
-        image = image.reshape(rows * cols, bands)
-
-    if spectra.shape[1] != image.shape[1]:
-        raise ValueError('number of bands in library and image must be equal')
-
-    # brightness normalize the image and spectra
-    image = copy.deepcopy(image)
-    spectra = copy.deepcopy(spectra)
-    image /= image.sum(axis=1).reshape(-1, 1)
-    spectra /= spectra.sum(axis=1).reshape(-1, 1)
-
-    # determine the optimal subspace using HYSIME
-    if use_hysime:
-        n_components, _ = hysime(image)
-    else:
-        n_components = image.shape[1]
-
-    # get eigenvalues and eigenvectors of the image-derived covariance matrix, i.e. covariance between image bands
-    cov = np.cov(image, rowvar=False)
-    eigval, eigvect = np.linalg.eig(cov)
-    ind = np.argsort(eigval)[::-1]
-    eigvect = eigvect[:, ind]
-    eigvect = eigvect[:, :n_components]
-
-    # calculate Euclidean distances between the tested spectra and the hyperplane formed by the image eigenvectors
-    p = np.diag(np.ones(image.shape[1])) - np.dot(eigvect, eigvect.T)
-    dist = np.sum((np.dot(p, spectra.T) ** 2), axis=0) ** 0.5
-    dist /= np.sum(spectra ** 2, axis=1).squeeze() ** 0.5
-
-    return dist
+    return fit
 
 
-def amuses(image, spectra, distance_measure, fmin, fmax, dmin, dmax):
-
-    if len(image.shape) > 3 or len(image.shape) < 2:
-        err_msg = """image must either be a 2D array of shape (spectra, bands)
-        or a 3D array of shape (rows, columns, bands)"""
-        raise ValueError(err_msg)
-
-    if len(image.shape) == 3:
-        rows, cols, bands = image.shape
-        image = image.reshape(rows * cols, bands)
-
-    if spectra.shape[1] != image.shape[1]:
-        raise ValueError('number of bands in library and image must be equal')
-
-    dmusic = music(image, spectra)
-
-    retain = np.where(dmusic < np.quantile(dmusic, fmin))[0]
-    con1 = dmusic >= np.quantile(dmusic, fmin)
-    con2 = dmusic < np.quantile(dmusic, fmax)
-    maybe = np.where(con1 & con2)[0]
-
-    retained_spectra = spectra[retain, :]
-
-    for m in maybe:
-
-        maybe_spectrum = spectra[m, :]
-        dist = distance_measure(maybe_spectrum, retained_spectra)
-        d = (dmusic[m] - dmusic.min()) / (dmusic.max() - dmusic.min())
-        thres = dmin + (dmax - dmin) * d
-
-        if np.all(dist > thres):
-            retain = np.append((retain, [m]))
-            retained_spectra = spectra[retain, :]
-
-    return retain
-
-
-def dice(image, spectra,
-         norm='l1',
-         n_components=None):
-
-    """
-    This is an experimental image-based library optimize technique that considers spectra and their Deviation
-    from the Image Center in Eigenspace (DICE). We first fit a PC transformation on the tested image and then apply it
-    on the tested spectra. The DICE distance measure is then quantified by taking component-wise ratios between absolute
-    PC values of the tested spectra and the standard deviation of the corresponding component. Aggregate statistics are
-    obtained for each tested spectrum using L1, L2 or Linf norms.
-
-    DICE can be used to determine if a spectrum is located in a more central or peripheral position in an image point
-    cloud. DICE is a relative distance measure (considering the varying distributions of the image point cloud along its
-    dimensions) using a well-defined point in the image feature space (the point cloud center) as reference. Similar to
-    MUSIC, the user can optionally specify how many of the first eigenvectors must be used to compute DICE.
-
-    :param image: Either 3D-array of floats with size (rows, cols, bands) or 2D-array of floats with shape (rows * cols,
-    bands)
-    :param spectra: 2D array of shape (n spectra, b bands)
-    :param mode: string, denoting the distance measure used to define DIVE, either 'l1', 'l2' or 'max'
-    :param n_components: int, None by default, number of PC to use
-    :return: d: 1D-array of floats with shape (n spectra,), containing DIVE values for each tested spectrum.
-    """
-
-    spectra = copy.deepcopy(spectra)
-    image = copy.deepcopy(image)
-
-    if norm not in ['l1', 'l2', 'linf']:
-        raise ValueError("mode must be 'l1', 'l2' or 'linf'")
-
-    if len(image.shape) > 3 or len(image.shape) < 2:
-        err_msg = """image must either be a 2D array of shape (spectra, bands)
-        or a 3D array of shape (rows, columns, bands)"""
-        raise ValueError(err_msg)
-
-    if len(image.shape) == 3:
-        rows, cols, bands = image.shape
-        image = image.reshape(rows * cols, bands)
-
-    if not n_components:
-        n_components = image.shape[1]
-
-    pca = PCA(n_components=n_components)
-    pca.fit(image)
-    image_pc = pca.transform(image)
-    image_pc_mean = image_pc.mean(axis=0)
-    image_pc_std = image_pc.std(axis=0)
-
-    spectra_pc = pca.transform(spectra)
-    d = (spectra_pc - image_pc_mean.reshape(1, -1)) / image_pc_std.reshape(1, -1)
-
-    if norm == 'l1':
-        d = np.mean(np.abs(d), axis=1)
-    elif norm == 'l2':
-        d = np.mean(d**2, axis=1)**0.5
-    elif norm == 'linf':
-        d = np.max(np.abs(d), axis=1)
-
-    return d
-
-
-def genetic_algorithm(spectra, labels, estimator,
-                      pop_size=100,
-                      n_parents=40,
-                      mutation_rate=0.01,
-                      n_generations=20,
-                      return_indices=False,
-                      return_fitness_evolution=False,
-                      print_fitness=False,
-                      mutation_rate_control=0.5):
+def ies_genetic_algorithm(spectra, labels, estimator,
+                          jobs=1,
+                          pop_size=100,
+                          all_spectra_in_start_pop=True,
+                          n_parents=40,
+                          mutation_rate=0.01,
+                          n_generations=20,
+                          return_indices=False,
+                          return_fitness_evolution=False,
+                          print_fitness=False,
+                          add_gaussian_noise=True,
+                          snr_db=20,
+                          mutation_rate_control=0.5):
 
     """
     Applies Iterative Endmember Selection (IES) using a Genetic Algorithm (GA) instead of forward/backward selection.
+    This approach converges considerably faster compared to the original IES, especially for larger datasets.
     :param spectra: 2D array of shape (n spectra, b bands)
     :param labels: 1D-array with shape (n spectra,)
     :param estimator: object, classifier used, must have fit and predict methods
@@ -486,6 +444,9 @@ def genetic_algorithm(spectra, labels, estimator,
         pop = np.random.uniform(0, 1, (pop_size, n_genes))
         pop = np.where(pop > 0.5, 1, 0)
 
+        if all_spectra_in_start_pop:
+            pop[0, :] = 1
+
         return pop
 
     def mutate(chromosome):
@@ -497,20 +458,6 @@ def genetic_algorithm(spectra, labels, estimator,
         chromosome = np.abs(chromosome)
 
         return chromosome
-
-    def assess(chromosome):
-
-        ind = np.where(chromosome)[0]
-        spectra_ = spectra[ind, :]
-        labels_ = labels[ind]
-        try:
-            mod = estimator.fit(spectra_, labels_)
-            est = mod.predict(spectra)
-            fit = kappa_coefficient(est, labels)[0]
-        except ValueError:
-            fit = -1
-
-        return fit
 
     def crossover(parents, fitness):
 
@@ -547,6 +494,11 @@ def genetic_algorithm(spectra, labels, estimator,
         return offspring
 
     # main code block
+    if add_gaussian_noise:
+        spectra_test = spectra + gaussian_noise(spectra, snr_db)
+    else:
+        spectra_test = copy.deepcopy(spectra)
+
     n_genes = spectra.shape[0]
     pop = make_new_pop(pop_size)
     fitness = np.ones(pop_size) * -1
@@ -556,11 +508,25 @@ def genetic_algorithm(spectra, labels, estimator,
 
     for generation in tqdm(generations, leave=False):
 
-        for p in range(pop_size):
+        ind_new = np.where(fitness < 0)[0]
+        pop_check = pop[ind_new, :]
 
-            if fitness[p] < 0:
-                fitness[p] = assess(pop[p, :])
+        # multi-processing part
+        # --------------------------------------------------------------------------------------------------------------
+        chunk = int(pop_check.shape[0] / jobs)
+        chunk_ind = [[j * chunk, (j + 1) * chunk] for j in range(jobs)]
+        chunk_ind[-1][-1] = pop_check.shape[0]
 
+        args = [[pop_check[ci[0]:ci[1]]] + [spectra, labels, estimator, spectra_test] for ci in chunk_ind]
+
+        pool = mp.Pool(jobs)
+        processes = [pool.apply_async(_assess, a) for a in args]
+        outputs = [process.get() for process in processes]
+        new_fitness = np.concatenate([output for output in outputs])
+        pool.close()
+        # --------------------------------------------------------------------------------------------------------------
+
+        fitness[ind_new] = new_fitness
         meanfit[generation] = fitness.mean()
         maxfit[generation] = fitness.max()
 
@@ -574,28 +540,21 @@ def genetic_algorithm(spectra, labels, estimator,
         if print_fitness:
             print('generation {} max. fitness = {}'.format(generation, fitness[0]))
 
-        offspring = crossover(parents, fitness)
-        if mutation_rate:
-            offspring = mutate_offspring(offspring)
-        pop = np.concatenate((parents, offspring), axis=0)
-        fitness = np.concatenate((fitness, np.ones(offspring.shape[0]) * -1))
+        if generation < generations[-1]:
 
-        if generation > 0 and mutation_rate_control:
-            if maxfit[generation] == maxfit[generation - 1]:
-                mutation_rate *= mutation_rate_control
-            elif maxfit[generation] > maxfit[generation - 1]:
-                mutation_rate /= mutation_rate_control
+            offspring = crossover(parents, fitness)
+            if mutation_rate:
+                offspring = mutate_offspring(offspring)
+            pop = np.concatenate((parents, offspring), axis=0)
+            fitness = np.concatenate((fitness, np.ones(offspring.shape[0]) * -1))
 
-    # final fitness assessment
-    for p in range(pop_size):
+            if generation > 0 and mutation_rate_control:
+                if maxfit[generation] == maxfit[generation - 1]:
+                    mutation_rate *= mutation_rate_control
+                elif maxfit[generation] > maxfit[generation - 1]:
+                    mutation_rate /= mutation_rate_control
 
-        if fitness[p] < 0:
-            fitness[p] = assess(pop[p, :])
-
-    sortind = np.argsort(fitness)
-    sortind = sortind[::-1]
-    pop = pop[sortind, :]
-
+    # get best performing subset of spectra
     best = pop[0, :]
     ind = np.where(best)[0]
     spectra = spectra[ind, :]
@@ -609,3 +568,98 @@ def genetic_algorithm(spectra, labels, estimator,
         output = (spectra, (meanfit, maxfit))
 
     return output
+
+
+def music(image, spectra,
+          n_components=None,
+          use_hysime=True):
+
+    """
+    This function essentially calculates the Euclidean distance between library spectra and the plane formed by the
+    first n eigenvectors of the covariance matrix of an image. The technique is described in detail in 'MUSIC-CSR:
+    Hyperspectral Unmixing via Multiple Signal Classification and Collaborative Sparse Regression' by Marian-Daniel
+    Iordache et al. (2014).
+
+    :param spectra: 2D array of shape (n_spectra, bands)
+    :param image: 3D array of shape (rows, columns, bands)
+    :param use_hysime: Boolean, use HYSIME to determine the optimal subspace
+    :return: 1D array containing MUSIC distances of each spectrum relative to the image subspace
+    """
+
+    if len(image.shape) > 3 or len(image.shape) < 2:
+        err_msg = """image must either be a 2D array of shape (spectra, bands)
+        or a 3D array of shape (rows, columns, bands)"""
+        raise ValueError(err_msg)
+
+    if len(image.shape) == 3:
+        rows, cols, bands = image.shape
+        image = image.reshape(rows * cols, bands)
+
+    if spectra.shape[1] != image.shape[1]:
+        raise ValueError('number of bands in library and image must be equal')
+
+    # brightness normalize the image and spectra
+    image = copy.deepcopy(image)
+    spectra = copy.deepcopy(spectra)
+    image /= image.sum(axis=1).reshape(-1, 1)
+    spectra /= spectra.sum(axis=1).reshape(-1, 1)
+
+    # determine the optimal subspace using HYSIME
+    if not n_components:
+        if use_hysime:
+            n_components, _ = hysime(image)
+        else:
+            n_components = image.shape[1]
+
+    # get eigenvalues and eigenvectors of the image-derived covariance matrix, i.e. covariance between image bands
+    cov = np.cov(image, rowvar=False)
+    eigval, eigvect = np.linalg.eig(cov)
+    ind = np.argsort(eigval)[::-1]
+    eigvect = eigvect[:, ind]
+    eigvect = eigvect[:, :n_components]
+
+    # calculate Euclidean distances between the tested spectra and the hyperplane formed by the image eigenvectors
+    p = np.diag(np.ones(image.shape[1])) - np.dot(eigvect, eigvect.T)
+    dist = np.sum((np.dot(p, spectra.T) ** 2), axis=0) ** 0.5
+    dist /= np.sum(spectra ** 2, axis=1).squeeze() ** 0.5
+
+    return dist
+
+
+def amuses(image, spectra, distance_measure, fmin, fmax, dmin, dmax,
+           use_hysime=True):
+
+    if len(image.shape) > 3 or len(image.shape) < 2:
+        err_msg = """image must either be a 2D array of shape (spectra, bands)
+        or a 3D array of shape (rows, columns, bands)"""
+        raise ValueError(err_msg)
+
+    if len(image.shape) == 3:
+        rows, cols, bands = image.shape
+        image = image.reshape(rows * cols, bands)
+
+    if spectra.shape[1] != image.shape[1]:
+        raise ValueError('number of bands in library and image must be equal')
+
+    dmusic = music(image, spectra,
+                   use_hysime=use_hysime)
+
+    retain = np.where(dmusic < np.quantile(dmusic, fmin))[0]
+    con1 = dmusic >= np.quantile(dmusic, fmin)
+    con2 = dmusic < np.quantile(dmusic, fmax)
+    maybe = np.where(con1 & con2)[0]
+
+    retained_spectra = spectra[retain, :]
+
+    for m in maybe:
+
+        maybe_spectrum = spectra[m, :]
+        dist = distance_measure(maybe_spectrum, retained_spectra)
+        d = (dmusic[m] - dmusic.min()) / (dmusic.max() - dmusic.min())
+        thres = dmin + (dmax - dmin) * d
+
+        if np.all(dist > thres):
+            retain = np.append((retain, [m]))
+            retained_spectra = spectra[retain, :]
+
+    return retain
