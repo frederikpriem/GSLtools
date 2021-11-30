@@ -140,9 +140,13 @@ def bandclust(spectra, wavelengths, bandwidths,
                         dimensions=1,
                         dtype=int,
                         object_name='subbands_start')
-    subbands_start = [int(s) for s in subbands_start]
 
-    for s in subbands_start:
+    if subbands_start is None:
+        subbands = [0, spectra.shape[1] - 1]
+    else:
+        subbands = copy.deepcopy(subbands_start)
+
+    for s in subbands:
 
         check.is_int(s,
                      ge=0,
@@ -161,7 +165,7 @@ def bandclust(spectra, wavelengths, bandwidths,
 
     def mutual_information(x, y):
 
-        # determine the optimal number of bins for MI error_matrix using the Freedman-Diaconis rule
+        # determine the optimal number of bins for MI performance using the Freedman-Diaconis rule
         if nbins is None:
 
             n = x.size
@@ -242,12 +246,7 @@ def bandclust(spectra, wavelengths, bandwidths,
 
         return split
 
-    # the initial subband covers all bands
-    if not subbands_start:
-        subbands = [0, spectra.shape[1]]
-    else:
-        subbands = copy.deepcopy(subbands_start)
-        subbands[-1] = spectra.shape[1]
+    # main code block
     splits = [0]
     skip = []
 

@@ -496,6 +496,7 @@ class SpectralLibrary:
     def get_resampled_spectra(self, wavelength, wavelength_scale_factor,
                               fwhm=None,
                               wavelength_inverse_unit=False,
+                              output_reflectance_scale_factor=None,
                               drop_nodata=True,
                               fill_nodata=None,
                               band_overlap_threshold=0.5,
@@ -531,6 +532,8 @@ class SpectralLibrary:
 
         check.is_bool(wavelength_inverse_unit,
                       object_name='wavelength_inverse_unit')
+        check.is_float(output_reflectance_scale_factor,
+                       object_name='output_reflectance_scale_factor')
         check.is_bool(drop_nodata,
                       object_name='drop_nodata')
         check.is_float(fill_nodata,
@@ -563,6 +566,10 @@ class SpectralLibrary:
             wl = wl[b_filter]
             fl = fl[b_filter]
 
+        # scale the reflectance data to the [0, 1] value range
+        rsf = self._metadata['reflectance scale factor']
+        spectra /= float(rsf)
+
         # address no-data values in the spectra
         spectra[np.isnan(spectra)] = -1
         spectra[spectra > 1] = -1
@@ -583,6 +590,10 @@ class SpectralLibrary:
                                                 fill_insufficient_overlap=fill_insufficient_overlap,
                                                 raise_insufficient_overlap=raise_insufficient_overlap,
                                                 error_prefix=error_prefix)
+
+        # transform the resampled spectra to the requested reflectance scale
+        if output_reflectance_scale_factor:
+            resampled_spectra *= output_reflectance_scale_factor
 
         return resampled_spectra
 

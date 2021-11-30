@@ -8,6 +8,9 @@ from scipy.spatial.distance import pdist, squareform
 from itertools import combinations
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from scipy.ndimage import convolve
+from tqdm import  tqdm
+from scipy.spatial import distance_matrix
 
 
 """
@@ -15,7 +18,7 @@ This module handles library optimization.
 """
 
 
-def iterative_spectral_distancing(spectra, labels, distance_measure, distance_threshold,
+def iterative_spectral_distancing(spectra, distance_measure, distance_threshold,
                                   return_indices=False):
 
     """
@@ -33,55 +36,57 @@ def iterative_spectral_distancing(spectra, labels, distance_measure, distance_th
         spectra: 2D-array of shape (r retained spectra, b bands)
     """
 
-    unique_labels = np.unique(labels)
+    # unique_labels = np.unique(labels)
     ret_loc = []
 
-    for label in unique_labels:
+    # for label in unique_labels:
 
-        ind_label = np.where(labels == label)[0]
-        spectra_label = copy.deepcopy(spectra[ind_label, :])
-        center = spectra_label.mean(axis=0)
-        dist_center = distance_measure(spectra_label, center)
+    # ind_label = np.where(labels == label)[0]
+    # spectra_label = copy.deepcopy(spectra[ind_label, :])
+    # center = spectra_label.mean(axis=0)
+    # dist_center = distance_measure(spectra_label, center)
+    center = spectra.mean(axis=0)
+    dist_center = distance_measure(spectra, center)
+    indices = np.arange(spectra.shape[0])
+    spectra_all = copy.deepcopy(spectra)
 
-        while True:
+    while True:
 
-            # stop when all library spectra are either retained or removed
-            if spectra_label.shape[0] == 0:
-                break
+        # stop when all library spectra are either retained or removed
+        if spectra.shape[0] == 0:
+            break
 
-            # retain the spectrum located furthest away from the center
-            ind = np.argmax(dist_center)
-            ret = copy.deepcopy(spectra_label[ind, :])
-            ret_loc.append(ind_label[ind])
+        # retain the spectrum located furthest away from the center
+        ind = np.argmax(dist_center)
+        ret = copy.deepcopy(spectra[ind, :])
+        ret_loc.append(indices[ind])
 
-            # remove the retained spectrum
-            spectra_label = np.delete(spectra_label, ind, axis=0)
-            ind_label = np.delete(ind_label, ind)
-            dist_center = np.delete(dist_center, ind)
+        # remove the retained spectrum
+        spectra = np.delete(spectra, ind, axis=0)
+        indices = np.delete(indices, ind)
+        dist_center = np.delete(dist_center, ind)
 
-            # stop when all library spectra are either retained or removed
-            if spectra_label.shape[0] == 0:
-                break
+        # stop when all library spectra are either retained or removed
+        if spectra.shape[0] == 0:
+            break
 
-            # Remove similar spectra from the library to avoid redundancy
-            dist = distance_measure(ret, spectra_label)
-            del_ind = np.where(dist < distance_threshold)[0]
+        # Remove similar spectra from the library to avoid redundancy
+        dist = distance_measure(ret, spectra)
+        del_ind = np.where(dist < distance_threshold)[0]
 
-            if del_ind.size > 0:
+        if del_ind.size > 0:
 
-                spectra_label = np.delete(spectra_label, del_ind, 0)
-                ind_label = np.delete(ind_label, del_ind)
-                dist_center = np.delete(dist_center, del_ind)
+            spectra = np.delete(spectra, del_ind, 0)
+            indices = np.delete(indices, del_ind)
+            dist_center = np.delete(dist_center, del_ind)
 
     ret_loc = np.array(ret_loc)
-    spectra = spectra[ret_loc, :]
-    labels = labels[ret_loc]
-
-    output = (spectra, labels)
+    spectra = spectra_all[ret_loc]
+    output = spectra
 
     if return_indices:
 
-        output = (spectra, labels, ret_loc)
+        output = (spectra, ret_loc)
 
     return output
 
@@ -101,12 +106,7 @@ def iterative_spectral_distancing_image(image, spectra, distance_measure, distan
     if spectra.shape[1] != image.shape[1]:
         raise ValueError('number of bands in library and image must be equal')
 
-    # brightness normalize the image and spectra
     spectra_out = copy.deepcopy(spectra)
-    # image = copy.deepcopy(image)
-    # spectra = copy.deepcopy(spectra)
-    # image /= image.sum(axis=1).reshape(-1, 1)
-    # spectra /= spectra.sum(axis=1).reshape(-1, 1)
 
     # start ISD
     center = image.mean(axis=0)
@@ -401,7 +401,7 @@ def _assess(pop, spectra, labels, estimator, spectra_test):
                                       weights_ref=weights,
                                       labels=uni)
         except ValueError:
-            fit[c] = -1
+            fit[c] = -10**50
 
     return fit
 
@@ -622,6 +622,7 @@ def music(image, spectra,
     p = np.diag(np.ones(image.shape[1])) - np.dot(eigvect, eigvect.T)
     dist = np.sum((np.dot(p, spectra.T) ** 2), axis=0) ** 0.5
     dist /= np.sum(spectra ** 2, axis=1).squeeze() ** 0.5
+    dist = np.real(dist)
 
     return dist
 

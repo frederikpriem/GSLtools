@@ -11,8 +11,8 @@ This module handles the visualization of imagery, spectral libraries and their o
 
 
 def plot_image(image,
-               vmin=0,
-               vmax=1,
+               vmin=None,
+               vmax=None,
                ax=None,
                show=True,
                origin='upper',
@@ -20,6 +20,13 @@ def plot_image(image,
                out=None):
 
     image = copy.deepcopy(image)
+
+    if not vmin:
+        vmin = np.min(image)
+
+    if not vmax:
+        vmax = np.max(image)
+
     image[image > vmax] = vmax
     image[image < vmin] = vmin
     image /= vmax - vmin

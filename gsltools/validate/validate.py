@@ -41,18 +41,19 @@ def overall_accuracy(est, ref,
 
     # apply weights and convert error matrix to proportions
     p = None
+    oa = None
 
     if weights_est is not None:
         p = cm * weights_est.reshape(-1, -1)
+        oa = np.diag(p).mean()
 
     if weights_ref is not None:
         p = cm * weights_ref.reshape(1, -1)
+        oa = np.diag(p).mean()
 
     if (weights_est is None) and (weights_ref is None):
         p = cm / cm.sum(axis=None)
-
-    # calculate overall accuracy
-    oa = np.diag(p).sum() / p.sum(axis=None)
+        oa = np.diag(p).sum()
 
     if not return_error_matrix:
         return oa
