@@ -4,6 +4,8 @@ import numpy as np
 def synthetic_mixing(spectra, labels, n_mixtures,
                      target_classes=None,
                      mixing_complexity=(0.5, 0.5),
+                     bilinear=False,
+                     bilinear_scale=.05,
                      include_original=False,
                      sampling='stratified',
                      only_within_class_mixing=False,
@@ -12,29 +14,12 @@ def synthetic_mixing(spectra, labels, n_mixtures,
                      seed=0,
                      ):
 
-    # """
-    # Randomly generates synthetic linear mixtures based on a given set of spectra.
-    # :param spectra: 2D-array of floats with shape (n spectra, b bands)
-    # :param names: 1D-array of strings with shape (n spectra,), contains class label of each spectrum
-    # :param size: int, number of synthetic mixtures to generate
-    # :param complexity: iterable of floats, weights given to generating binary, ternary, quaternary ... mixtures
-    # :param include_original: bool, whether to include the original spectra in the output array of spectra
-    # :param sampling: str, type of sampling used, either 'random' or 'stratified'
-    # :param background: str or iterable of strings, classes considered as background whose fractions are not to be taken
-    # in account
-    # :param only_within_class_mixing: bool, False by default, whether to only perform withing class mixing
-    # :param only_between_class_mixing: bool, False by default, whether to only perform between class mixing
-    # :param return_dominant_class: bool, False by default, whether to return the class labels corresponding to the
-    # highest class fraction of each generated mixture.
-    # :return:
-    #     mix: 2D-array of floats with shape (m mixtures, b bands), containing reflectance values of synthetic mixtures
-    #     frac: 2D-array of floats with shape (m mixtures, c classes), containing fraction labels of each mixture
-    # """
-
     np.random.seed(seed)
 
     if target_classes is None:
         target_classes = np.unique(labels)
+    else:
+        target_classes = np.array(target_classes)
 
     numspec = spectra.shape[0]
     numbands = spectra.shape[1]
@@ -93,7 +78,6 @@ def synthetic_mixing(spectra, labels, n_mixtures,
                 randfrac[n] = np.random.uniform(0, 1 - np.sum(randfrac[:n]))
 
         # randomly assign library spectra to each fraction
-        # use weights to perform stratified sampling
         if only_within_class_mixing:
 
             specind1 = np.random.choice(range(numspec),
@@ -139,13 +123,19 @@ def synthetic_mixing(spectra, labels, n_mixtures,
             target_class_ind = np.where(target_classes == labels[ind])[0]
 
             if len(target_class_ind) > 0:
-                frac[s, target_class_ind] += randfrac[i]
+                frac[s, target_class_ind[0]] += randfrac[i]
 
-        # generate the synthetic mixtures
+        # generate the synthetic mixture
         mixtemp = np.zeros(numbands)
 
         for n in range(num):
             mixtemp += randfrac[n] * spectra[specind[n], :]
+
+        # add the bilinear component to the mixture
+        # the bilinear component is generated with the first two spectra of the mixture
+        if bilinear:
+            b_randfrac = np.random.exponential(scale=bilinear_scale)
+            mixtemp += b_randfrac * spectra[specind[0], :] * spectra[specind[1], :]
 
         mix[s, :] = mixtemp
 

@@ -135,19 +135,21 @@ def plot_spectra(spectra, wavelengths,
                     spectra = np.concatenate((spectra[:, :ind + 1],
                                               np.array([np.nan] * spectra.shape[0]).reshape(-1, 1),
                                               spectra[:, ind + 1:]),
-                                             axis=0)
+                                             axis=1)
                     wavelengths = np.concatenate((wavelengths[:ind + 1],
                                                   np.array([np.nan]),
                                                   wavelengths[ind + 1:]))
 
     # plot the spectra with correct color and label
-    for s, spectrum in enumerate(spectra):
+    for s in range(spectra.shape[0]):
+
+        spectrum = spectra[s, :]
 
         label = None
         if labels is not None:
             label = labels[s]
 
-        ax.plot(wavelengths, spectrum,
+        ax.plot(wavelengths, spectrum.squeeze(),
                 color=colors[s],
                 linestyle=linestyles[s],
                 linewidth=linewidth,

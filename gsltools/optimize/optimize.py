@@ -1,16 +1,13 @@
 import copy
+
 import numpy as np
 import multiprocessing as mp
-from tqdm import tqdm
+
 from gsltools.validate import kappa_coefficient, overall_accuracy
 from gsltools.denoise import hysime, gaussian_noise
 from scipy.spatial.distance import pdist, squareform
 from itertools import combinations
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from scipy.ndimage import convolve
-from tqdm import  tqdm
-from scipy.spatial import distance_matrix
+from tqdm import tqdm
 
 
 """
@@ -82,81 +79,6 @@ def iterative_spectral_distancing(spectra, distance_measure, distance_threshold,
 
     ret_loc = np.array(ret_loc)
     spectra = spectra_all[ret_loc]
-    output = spectra
-
-    if return_indices:
-
-        output = (spectra, ret_loc)
-
-    return output
-
-
-def iterative_spectral_distancing_image(image, spectra, distance_measure, distance_threshold_image, distance_threshold_spectra,
-                                        return_indices=False):
-
-    if len(image.shape) > 3 or len(image.shape) < 2:
-        err_msg = """image must either be a 2D array of shape (spectra, bands)
-        or a 3D array of shape (rows, columns, bands)"""
-        raise ValueError(err_msg)
-
-    if len(image.shape) == 3:
-        rows, cols, bands = image.shape
-        image = image.reshape(rows * cols, bands)
-
-    if spectra.shape[1] != image.shape[1]:
-        raise ValueError('number of bands in library and image must be equal')
-
-    spectra_out = copy.deepcopy(spectra)
-
-    # start ISD
-    center = image.mean(axis=0)
-    dist_center = distance_measure(image, center)
-    loc = np.arange(spectra.shape[0])
-    ret_loc = []
-
-    while True:
-
-        # stop when all image spectra have been processed
-        if image.shape[0] == 0:
-            break
-
-        # get the image spectrum located farthest away from the image center
-        ind = np.argmax(dist_center)
-        test = copy.deepcopy(image[ind, :])
-
-        # check which target spectra are similar to the test image spectrum
-        dist = distance_measure(test, spectra)
-        ret_ind = np.where(dist < distance_threshold_spectra)[0]
-
-        if ret_ind.size > 0:
-
-            # retain similar spectra
-            ret_loc.append(loc[ret_ind])
-
-            # then remove the retained spectra from the pool of candidates
-            spectra = np.delete(spectra, ret_ind, 0)
-            loc = np.delete(loc, ret_ind)
-
-        # remove the test image spectrum
-        dist_center = np.delete(dist_center, ind)
-        image = np.delete(image, ind, axis=0)
-
-        # check if there are still image spectra left at this point
-        if image.shape[0] == 0:
-            break
-
-        # remove all image spectra that are similar to the test image spectrum
-        dist = distance_measure(test, image)
-        del_ind = np.where(dist < distance_threshold_image)[0]
-
-        if del_ind.size > 0:
-
-            image = np.delete(image, del_ind, 0)
-            dist_center = np.delete(dist_center, del_ind)
-
-    ret_loc = np.concatenate(ret_loc)
-    spectra = spectra_out[ret_loc]
-
     output = spectra
 
     if return_indices:
@@ -572,7 +494,9 @@ def ies_genetic_algorithm(spectra, labels, estimator,
 
 def music(image, spectra,
           n_components=None,
-          use_hysime=True):
+          brightness_normalize=False,
+          use_hysime=False,
+          return_n_components=False):
 
     """
     This function essentially calculates the Euclidean distance between library spectra and the plane formed by the
@@ -598,18 +522,16 @@ def music(image, spectra,
     if spectra.shape[1] != image.shape[1]:
         raise ValueError('number of bands in library and image must be equal')
 
-    # brightness normalize the image and spectra
-    image = copy.deepcopy(image)
-    spectra = copy.deepcopy(spectra)
-    image /= image.sum(axis=1).reshape(-1, 1)
-    spectra /= spectra.sum(axis=1).reshape(-1, 1)
-
     # determine the optimal subspace using HYSIME
     if not n_components:
         if use_hysime:
             n_components, _ = hysime(image)
         else:
             n_components = image.shape[1]
+
+    if brightness_normalize:
+        image = image / image.sum(axis=1).reshape(-1, 1)
+        spectra = spectra / spectra.sum(axis=1).reshape(-1, 1)
 
     # get eigenvalues and eigenvectors of the image-derived covariance matrix, i.e. covariance between image bands
     cov = np.cov(image, rowvar=False)
@@ -624,11 +546,17 @@ def music(image, spectra,
     dist /= np.sum(spectra ** 2, axis=1).squeeze() ** 0.5
     dist = np.real(dist)
 
-    return dist
+    output = dist
+
+    if return_n_components:
+        output = (dist, n_components)
+
+    return output
 
 
 def amuses(image, spectra, distance_measure, fmin, fmax, dmin, dmax,
-           use_hysime=True):
+           n_components=None,
+           use_hysime=False):
 
     if len(image.shape) > 3 or len(image.shape) < 2:
         err_msg = """image must either be a 2D array of shape (spectra, bands)
@@ -643,6 +571,7 @@ def amuses(image, spectra, distance_measure, fmin, fmax, dmin, dmax,
         raise ValueError('number of bands in library and image must be equal')
 
     dmusic = music(image, spectra,
+                   n_components=n_components,
                    use_hysime=use_hysime)
 
     retain = np.where(dmusic < np.quantile(dmusic, fmin))[0]
