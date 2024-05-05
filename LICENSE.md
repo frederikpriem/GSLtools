@@ -1,6 +1,6 @@
 Generic Spectral Library (GSL) tools is an experimental implementation of a Python package to create, manage, extend and apply spectral library collections for mapping on hyper- or multispectral remote sensing imagery.
 
-Copyright (C) 2022  Frederik Priem
+Copyright (C) 2021 Frederik Priem
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
